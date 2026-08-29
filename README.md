@@ -2,9 +2,10 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status:** Step 1 of 24 complete — project skeleton and shared modules.
-> See [PROGRESS.md](PROGRESS.md) for what exists and [SETUP.md](SETUP.md) for
-> how to get it into Roblox Studio.
+> **Status:** Steps 1–6 of 24 complete. Data, config, replication, HUD and park
+> plots are in. See [PROGRESS.md](PROGRESS.md) for what exists,
+> [QUICKSTART.md](QUICKSTART.md) to run it, and [SETUP.md](SETUP.md) for the
+> per-step Studio detail.
 
 ## The 8-second pitch
 
@@ -12,13 +13,23 @@ You own a Dinosaur Park. Dinosaurs in your park print money. You don't buy
 dinosaurs — you **steal their eggs from wild nests** while a very angry mother
 dinosaur chases you home. Then other players try to steal your dinosaurs.
 
+## Try it
+
+**[QUICKSTART.md](QUICKSTART.md)** — three ways to run it, from a 30-second
+offline test to a full Studio setup.
+
+```bash
+./tests/run.sh    # 1,468 assertions, no Studio needed
+```
+
 ## Repository layout
 
 ```
 src/      Luau source, mirroring the Roblox Studio tree exactly
 tests/    Offline specs — ./tests/run.sh (no Studio needed)
 docs/     The design blueprint (below)
-SETUP.md  How to get src/ into Studio
+SETUP.md      Per-step Studio placement and test lists
+QUICKSTART.md How to get it running at all
 ```
 
 ## Documentation index
