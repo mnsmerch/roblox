@@ -29,6 +29,7 @@ ReplicatedStorage
     │   ├── DailyConfig              (ModuleScript)  7-day + streak table
     │   ├── ProductConfig            (ModuleScript)  gamepass + dev product ids
     │   ├── IndexConfig              (ModuleScript)  milestone rewards
+    │   ├── ParkConfig               (ModuleScript)  plot geometry + grid maths
     │   └── ConfigValidator          (ModuleScript)  boot-time content checks
     ├── Modules                      (Folder)
     │   ├── Types                    (ModuleScript)  Luau type exports
@@ -60,6 +61,7 @@ ServerScriptService
         ├── SecurityService          rate limits, distance checks, movement sanity
         ├── EconomyService           Fossils/DNA mutations, income ticking, offline
         ├── ParkService              plot assign/release, placement grid, defences
+        │   └── PlotBuilder          procedural plot geometry
         ├── NestService              nest spawn/respawn/claim
         ├── EggService               pickup, carry tokens, deposit
         ├── WildAIService            guardian spawn, chase ticking, de-aggro

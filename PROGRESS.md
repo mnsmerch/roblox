@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 5 of 24 complete.** Awaiting the Studio Play test before Step 6.
+## Status: **Step 6 of 24 complete.** Awaiting the Studio Play test before Step 7.
 
 ## Completed
 
@@ -16,6 +16,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | Glitch Compsognathus added (species #35) | The any-zone Secret; approved as V1 scope |
 | 2026-08-29 | **Step 4** — state replication | Shared `Patch` module, allowlist boundary, 183 more assertions |
 | 2026-08-29 | **Step 5** — HUD skeleton | UI built in code, 96 more assertions |
+| 2026-08-29 | **Step 6** — park plots | 24 plots generated procedurally, 142 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -26,7 +27,7 @@ accident. Updated at the end of every build step.
 | 3 | Config modules & ConfigValidator | ✅ **done** |
 | 4 | State replication | ✅ **done** |
 | 5 | HUD skeleton | ✅ **done** |
-| 6 | Park plots | ⬜ |
+| 6 | Park plots | ✅ **done** |
 | 7 | Nests & the world | ⬜ |
 | 8 | Egg pickup & carrying | ⬜ |
 | 9 | Guardian AI & the chase | ⬜ |
@@ -62,6 +63,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/UpgradeConfig` | ModuleScript | 11 upgrade + 3 defence tracks, cost/effect curves |
 | `Config/RebirthConfig` | ModuleScript | Cost curve, preserved keys, permanent grants |
 | `Config/ConfigValidator` | ModuleScript | 10 content rules + 4 structural; aborts boot on error |
+| `Config/ParkConfig` | ModuleScript | Plot geometry, grid maths, visual tiers |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -91,6 +93,27 @@ rebuilds this on every server start.
 | `Services/DataService/Migrations` | ModuleScript | Ordered pure migrations + `Validate`/`Apply`/`WriteInPlace` |
 | `Services/PlayerDataService` | ModuleScript | Profile access layer for every other service |
 | `Services/PlayerDataService/Replication` | ModuleScript | The client mirror: allowlist slice, 5 Hz coalesced deltas |
+| `Services/ParkService` | ModuleScript | Plot ownership, park occupancy, grid ↔ world |
+| `Services/ParkService/PlotBuilder` | ModuleScript | Procedural plot geometry |
+
+```
+ParkService.GetPlot(player) -> Model?
+ParkService.GetPlotByUserId(userId) -> Model?
+ParkService.GetOwnerOf(plot) -> number
+ParkService.GetParkAt(position) -> plot?, ownerUserId?     -- O(1)
+ParkService.IsInsideOwnPark(player) -> boolean
+ParkService.GetOccupiedPark(player) -> userId?
+ParkService.GetSpawnCFrame(plot) -> CFrame
+ParkService.GetTileCFrame(plot, tileX, tileZ, size?) -> CFrame
+ParkService.WorldToTile(plot, position) -> tileX?, tileZ?
+ParkService.SetShieldVisible(plot, visible)
+ParkService.SetVisualTier(plot, parkValue)
+ParkService.PlotAssigned / PlotReleased / ParkEntered / ParkExited   Signals
+```
+
+Generated at runtime into `Workspace/SAD_World/ParkPlots`; the previous ring is
+destroyed on each boot. `Players.CharacterAutoLoads` is **off** — characters are
+spawned by hand once a plot is assigned.
 
 **Public API in use (frozen):**
 
@@ -193,11 +216,15 @@ current value, then on every change at or under that path. No polling anywhere.
 | 12 | Added `SAD_Client/UI/` (Theme, Create, Widgets) beside `Controllers` | Forty `Instance.new` calls inline in a controller is unreadable, and three controllers sharing a button style needs one place to define it | docs/09 §1 |
 | 13 | `SAD_UI` is created at runtime in `PlayerGui`, not placed in `StarterGui` | The UI is built in code, so there is nothing to place. A PlayerGui-parented ScreenGui survives respawn inherently — no `ResetOnSpawn` left to get wrong | docs/09 §1 |
 | 14 | Breakpoints renamed `phone/tablet/desktop` → `compact/medium/wide` | They measure available room, not device class. Device names invite device-sniffing, which is how UI ends up wrong on the one configuration nobody tested | docs/08 §4 |
+| 15 | **The enclosure grid is mathematical, not 64 parts per plot** | docs/13 called for 64 tile parts — 1,536 anchored parts across the ring to express a coordinate transform. One textured surface plus `ParkConfig` maths instead | docs/02 §3 |
+| 16 | Added `ParkConfig` (plot geometry, grid maths, visual tiers) | Shared, because the client's placement preview must land where the server puts the dinosaur. Two copies of a grid origin is two grids | docs/09 §1 |
+| 17 | `Players.CharacterAutoLoads = false`; characters spawned after plot assignment | Otherwise a player materialises at the world origin and is visibly teleported — in the first second of the game, against FTUE beat 1 | docs/00 §3 |
+| 18 | Plot ring radius **derived** from `PlotCount × (PlotSize + PlotGap)`, gap raised 20 → 30 | A hand-picked radius overlaps plots the moment `PlotCount` changes. 20 studs of gap left only 6 studs of separating-axis margin | docs/02 §3 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 32 source files and runs **1,326
-assertions** outside Roblox. Last run: **1,326 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 35 source files and runs **1,468
+assertions** outside Roblox. Last run: **1,468 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -206,6 +233,7 @@ assertions** outside Roblox. Last run: **1,326 passed, 0 failed.**
 | `step3_spec` (731) | Every content number against the design docs, the full coverage matrix, and 18 deliberately broken configs the validator must reject |
 | `step4_spec` (183) | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 | `step5_spec` (96) | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, design-token ordering |
+| `step6_spec` (142) | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap at 24 and 48 plots, and the plot depth budget |
 
 Bugs the specs caught before they shipped:
 
@@ -231,6 +259,14 @@ Bugs the specs caught before they shipped:
    from `MinTouchTarget / BottomButtonHeight` and applies universally, making
    the guarantee structural rather than dependent on a device check being
    right. Asserted across 12 real viewports.
+6. `PlotBuilder` used `CFrame.lookAt(position, hubCentre)` to orient plots.
+   `CFrame.LookVector` is the CFrame's local **−Z**, so that put every park's
+   gate, incubator row and spawn pad facing *away* from the hub. The LookVector
+   now aims outward so local +Z faces the hub.
+7. The first plot layout had a 96-stud enclosure grid inside a 120-stud plot
+   with a −14 offset, so it poked 2 studs through the back wall, and the vault
+   row sat on top of it. Neither throws — it renders as dinosaurs clipping into
+   pedestals. Tile size is now 10 and the whole depth budget is asserted.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

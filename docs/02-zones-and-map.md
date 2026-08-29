@@ -131,15 +131,29 @@ A nest is a `Model` at a `NestAnchor` with:
 
 ## 3. Player park plots
 
-24 plots ringing the hub, assigned on join, released on leave. A plot is a
-**flat 120×120 stud pad** with:
+24 plots ringing the hub, assigned on join, released on leave, **generated
+procedurally** by `PlotBuilder` — 24 identical plots is exactly what you do not
+want hand-placed in a `.rbxl`: it cannot be diffed, a fix has to be applied 24
+times, and changing the ring radius means moving everything.
+
+The ring radius is **derived**, not chosen: 24 plots each 120 wide with 30 studs
+of clearance need 3,600 studs of circumference, so the ring sits at 3600 ÷ 2π ≈
+**573**. Picking a radius by hand is how plots overlap the moment `PlotCount`
+changes. `tests/step6_spec.lua` asserts non-overlap via a separating-axis test
+at both 24 and 48 plots.
+
+A plot is a **flat 120×120 stud pad** with:
 
 - **Park Gate** — the safe-zone threshold. Crossing it inward ends any wild
   chase and deposits carried eggs.
 - **Safe Dome** — a translucent hemisphere, visible only when a shield is
   active, in the owner's shield colour.
-- **Enclosure Grid** — an 8×8 grid of placement tiles. Dinosaurs occupy 1×1
-  through 4×4 tiles. Park Size upgrades unlock tiles outward from centre.
+- **Enclosure Grid** — an 8×8 grid of 10-stud placement tiles. Dinosaurs occupy
+  1×1 through 4×4. **The grid is mathematical, not physical**: one textured
+  surface part plus `ParkConfig.TileToOffset` / `OffsetToTile`. Sixty-four parts
+  per plot would be 1,536 anchored parts across the ring to express a
+  coordinate transform. Park Size upgrades unlock tiles outward from centre
+  (V1.4; all 64 are available in V1, with `dinoSlots` limiting quantity).
 - **Incubator Row** — up to 8 incubator pads along the gate wall, deliberately
   the *first* thing a visitor sees.
 - **Vault Pedestals** — 1–5 raised, caged pedestals. Dinosaurs here are
@@ -147,6 +161,16 @@ A nest is a `Model` at a `NestAnchor` with:
 - **Collection Totem** — tap to collect banked Fossils.
 - **Defence Slots** — fences, towers, cameras (see [03-stealing.md](03-stealing.md) §5).
 - **Decoration slots** — cosmetic only (V1.4+).
+
+**Plot depth budget** (local Z, gate at +60 to back wall at −60), asserted
+arithmetically so a fixture can never poke through a wall or land on the grid:
+
+| Row | Front | Back |
+|---|---:|---:|
+| Spawn pad | +58 | +50 |
+| Incubator row | +50 | +42 |
+| Enclosure grid | +38 | −42 |
+| Vault pedestals | −49.5 | −58.5 |
 
 **Park visual tiers** (auto-applied by total park value, no purchase needed):
 Dirt Lot → Wooden Ranch → Stone Preserve → Steel Facility → Amber Kingdom →

@@ -246,6 +246,27 @@ in `CONTROLLER_ORDER`.
 
 ---
 
+## Step 6 — park plots
+
+`ParkService` becomes a ModuleScript **with a child**, like `DataService`.
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/ParkConfig` | `src/.../Config/ParkConfig.lua` *(new)* |
+| `Services/ParkService` | `src/.../ParkService/init.lua` *(new)* |
+| `Services/ParkService/PlotBuilder` | `src/.../ParkService/PlotBuilder.lua` *(new)* |
+
+**Nothing goes in Workspace.** All 24 plots are generated at boot into
+`Workspace/SAD_World/ParkPlots`, and the previous ring is destroyed on each
+run — so a Studio re-run never leaves a duplicate behind.
+
+If your place still has the default **Baseplate** and **SpawnLocation**, delete
+the SpawnLocation (`CharacterAutoLoads` is now off and players are spawned into
+their own park) and keep or delete the Baseplate as you like — the plots have
+their own ground. Step 7 builds the hub and zones.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -611,9 +632,98 @@ whole reason `SAD_UI` lives in `PlayerGui` rather than `StarterGui`.
 
 ---
 
+## Step 6 test
+
+**1. Boot.** Play. Expect:
+
+```
+[SAD/S][ParkService] Built 24 plots at radius 573 in N ms
+[SAD/S][ParkService] Assigned YourName to Plot01
+[SAD/S][ParkService] Occupancy sampling at 4 Hz
+```
+
+You should spawn **inside a park**, facing in, with a gate behind you, an
+incubator row in front, the enclosure grid beyond it and vault pedestals at the
+back. The gate sign reads `YourName's Park`.
+
+There should be **no visible teleport** — you materialise in the park rather
+than appearing at the origin and being moved. That is `CharacterAutoLoads` being
+off and the character spawned by hand once a plot is assigned.
+
+**2. Plots face inward.** Walk out of your gate toward the middle of the ring.
+Every other park's gate should be facing you. That is the status engine from
+docs/02 §1.1 — a Titan in anyone's park will be visible from the plaza.
+
+**3. Two players get two plots.** Use **Test → Clients and Servers → 2 players**.
+Each gets a different plot, each spawns in their own, and each sign shows the
+right name. Then stop one client and confirm the plot frees:
+
+```
+[SAD/S][ParkService] Released Player2 from Plot02
+```
+
+Its sign returns to `Empty Plot`.
+
+**4. Occupancy fires at gates.** Server command bar:
+
+```lua
+local Park = require(game.ServerScriptService.SAD_Server.Services.ParkService)
+Park.ParkEntered:Connect(function(p, owner) print(p.Name, "entered park of", owner) end)
+Park.ParkExited:Connect(function(p, owner) print(p.Name, "left park of", owner) end)
+```
+
+Walk in and out of your gate, then into another player's. This is what Step 10
+uses to end a chase and deposit an egg, and Step 15 to complete a raid — and it
+is computed from position server-side, never from a `Touched` event, which a
+client can fire by hand.
+
+**5. Grid maths matches geometry.**
+
+```lua
+local Park = require(game.ServerScriptService.SAD_Server.Services.ParkService)
+local p = game.Players:GetPlayers()[1]
+local plot = Park.GetPlot(p)
+
+-- Stand somewhere on the grid, then:
+local root = p.Character.HumanoidRootPart
+print("tile:", Park.WorldToTile(plot, root.Position))
+
+-- And the inverse: drop a marker on tile (4,4)
+local marker = Instance.new("Part")
+marker.Anchored, marker.CanCollide, marker.Size = true, false, Vector3.new(9, 1, 9)
+marker.Color = Color3.fromRGB(95, 211, 95)
+marker.CFrame = Park.GetTileCFrame(plot, 4, 4)
+marker.Parent = workspace
+```
+
+The marker should land squarely on a grid square. Try a footprint too —
+`Park.GetTileCFrame(plot, 5, 5, "4x4")` sits in the middle of a 4×4 block.
+
+**6. The shield dome.**
+
+```lua
+Park.SetShieldVisible(Park.GetPlot(game.Players:GetPlayers()[1]), true)
+```
+
+**7. Visual tiers.** `Park.SetVisualTier(plot, 2e6)` turns the park to stone.
+Free progression that a returning player notices; Step 12 drives it from real
+park value.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Gates face outward | `PlotBuilder.OriginOf` was edited — `CFrame.LookVector` is local **−Z**, so the LookVector must point *outward* for +Z to face the hub |
+| Spawning at the origin and falling | A leftover `SpawnLocation` in Workspace, or `CharacterAutoLoads` re-enabled |
+| Two players on one plot | Something yields inside `claimPlot` — it must run start to finish in one resumption |
+| Plots overlap | `PlotCount` raised without re-running the specs; the ring radius is derived and the spec checks separation |
+| `No free plot` errors | Place `MaxPlayers` exceeds `ParkConfig.PlotCount` |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,326 assertions** without Studio:
+Syntax-checks every source file and runs **1,468 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -628,6 +738,7 @@ Fetches the Luau CLI on first run.
 | `tests/step3_spec.lua` | Every content number against the design docs, the full zone × rarity coverage matrix, and 18 deliberately broken configs the validator must reject |
 | `tests/step4_spec.lua` | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 | `tests/step5_spec.lua` | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, and design-token ordering |
+| `tests/step6_spec.lua` | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap, and the plot depth budget |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.
