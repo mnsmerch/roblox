@@ -157,7 +157,7 @@ ok("weather cap exists", MutationConfig.WeatherModifierCap == 40)
 ------------------------------------------------------------------ species
 section("DinoConfig")
 
-eq("V1 roster is 34 species", DinoConfig.Count(), 34)
+eq("V1 roster is 35 species", DinoConfig.Count(), 35)
 
 local byRarity = {}
 for _, entry in pairs(DinoConfig.Species) do
@@ -168,7 +168,7 @@ eq("9 uncommon", byRarity.uncommon, 9)
 eq("8 rare", byRarity.rare, 8)
 eq("3 epic", byRarity.epic, 3)
 eq("2 legendary", byRarity.legendary, 2)
-eq("1 secret", byRarity.secret, 1)
+eq("2 secret", byRarity.secret, 2)
 eq("1 titan", byRarity.titan, 1)
 eq("no mythic in V1", byRarity.mythic, nil)
 eq("no ancient in V1", byRarity.ancient, nil)
@@ -179,18 +179,20 @@ for id, entry in pairs(DinoConfig.Species) do
 	ok("model name derived: " .. id, entry.ModelName == "Dino_" .. id)
 	ok("egg model from rarity: " .. id, entry.EggModelName == "Egg_" .. entry.Rarity)
 	ok("in at least one zone: " .. id, #entry.Zones > 0)
-	ok("species factor in band: " .. id, entry.SpeciesFactor >= 0.80 and entry.SpeciesFactor <= 1.30)
+	-- 0.60 is the Glitch Compsognathus: deliberately the worst Secret by
+	-- income, which is the joke.
+	ok("species factor in band: " .. id, entry.SpeciesFactor >= 0.60 and entry.SpeciesFactor <= 1.30)
 end
 
 eq("titan renders at 3x", DinoConfig.Species.titanrex.VisualScale, 3)
 eq("trex is the top legendary", DinoConfig.Species.trex.SpeciesFactor, 1.30)
 eq("index order is declaration order", DinoConfig.Species.compsognathus.IndexOrder, 1)
-eq("titan is last in the index", DinoConfig.Species.titanrex.IndexOrder, 34)
+eq("titan is last in the index", DinoConfig.Species.titanrex.IndexOrder, 35)
 
 local ordered = DinoConfig.Ordered()
-eq("Ordered returns everything", #ordered, 34)
+eq("Ordered returns everything", #ordered, 35)
 ok("Ordered runs common to titan",
-	ordered[1].Rarity == "common" and ordered[34].Rarity == "titan")
+	ordered[1].Rarity == "common" and ordered[35].Rarity == "titan")
 
 ------------------------------------------------------------------ coverage
 section("Zone x rarity coverage (validator rule 6)")
@@ -213,6 +215,10 @@ for _, zoneId in ipairs(ZoneConfig.Order) do
 	end
 end
 eq("no uncovered combinations", missing, 0)
+-- Both Secrets reach every zone, so a Secret roll always has two candidates.
+for _, zoneId in ipairs(ZoneConfig.Order) do
+	eq("two secrets reachable in " .. zoneId, #DinoConfig.SpeciesFor(zoneId, "secret"), 2)
+end
 eq("28 rollable combinations", combos, 28)
 
 -- A species must never appear twice in one bucket.

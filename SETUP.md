@@ -193,6 +193,25 @@ alongside the existing `GameConfig`:
 
 ---
 
+## Step 4 — replication
+
+**One restructure:** `PlayerDataService` becomes a ModuleScript **with a child**,
+the same shape as `DataService`. In Studio, add a ModuleScript named
+`Replication` inside the existing `PlayerDataService`.
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Modules/Patch` | `src/.../Modules/Patch.lua` *(new)* |
+| `Services/PlayerDataService` | `src/.../PlayerDataService/init.lua` *(re-paste)* |
+| `Services/PlayerDataService/Replication` | `src/.../PlayerDataService/Replication.lua` *(new)* |
+| `SAD_Client/Controllers/StateController` | `src/.../Controllers/StateController.lua` *(new)* |
+| `Config/GameConfig` | *(re-paste — gained `SettingsSchema`)* |
+
+`Bootstrap` is unchanged this step; `StateController` is already in
+`CONTROLLER_ORDER`.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -370,9 +389,103 @@ print(trex.DisplayName, "earns", Rarity.Tiers[trex.Rarity].BaseIncome * trex.Spe
 
 ---
 
+## Step 4 test
+
+**1. Boot.** Play. Expect:
+
+```
+[SAD/S][Replication] 25 field(s) replicated, 5 withheld
+[SAD/S][Replication] Flushing at 5 Hz
+[SAD/S][Replication] Sent full state to YourName
+[SAD/C][StateController] State ready
+[SAD/C][Boot] Loaded 1 controller(s): StateController
+```
+
+**2. The mirror arrived.** In the **client** console (F9 → Client, or the
+command bar set to client context):
+
+```lua
+local S = require(game.Players.LocalPlayer.PlayerScripts.SAD_Client.Controllers.StateController)
+print(S.IsReady(), S.GetPath({ "Fossils" }), S.GetPath({ "Settings", "MusicVolume" }))
+print("withheld:", S.GetPath({ "ProcessedReceipts" }))  --> nil, correctly
+```
+
+**3. A delta lands.** Server command bar:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+PDS.UpdateKeys(p, { "Fossils" }, function(d) d.Fossils += 777 end, "test")
+```
+
+The client's `Fossils` should change within a frame or two — currency flushes
+immediately rather than waiting for the 5 Hz tick.
+
+**4. Observe fires.** Client console:
+
+```lua
+local S = require(game.Players.LocalPlayer.PlayerScripts.SAD_Client.Controllers.StateController)
+S.Observe({ "Fossils" }, function(v) print("Fossils ->", v) end)
+```
+
+It prints once immediately, then again on every server-side change. This is the
+pattern every HUD element in Step 5 uses.
+
+**5. Nothing leaks.** Confirm the five withheld fields are absent client-side:
+
+```lua
+for _, k in { "ProcessedReceipts", "RobuxSpent", "LastSeen", "FirstJoinAt", "SchemaVersion" } do
+    print(k, S.GetPath({ k }))   -- all nil
+end
+```
+
+**6. The boundary assert.** Add a junk field to `ProfileTemplate`
+(`Wibble = 0`) and Play. The server must **refuse to boot**:
+
+```
+Replication: profile field(s) Wibble are neither replicated nor withheld.
+Add each to REPLICATED or WITHHELD in Replication.lua - this is a security decision.
+```
+
+Remove it afterwards. This is the guard that stops a future field silently
+reaching clients — or silently failing to.
+
+**7. Settings round trip.** Client console:
+
+```lua
+game.ReplicatedStorage.SAD_Net.Events.RequestSetSetting:FireServer("MusicVolume", 15)
+task.wait(0.5)
+print(S.GetPath({ "Settings", "MusicVolume" }))   --> 15
+```
+
+Then try to break it — all four must leave the value at 15:
+
+```lua
+local E = game.ReplicatedStorage.SAD_Net.Events.RequestSetSetting
+E:FireServer("MusicVolume", 9999)      -- clamped to 100
+E:FireServer("MusicVolume", "loud")    -- wrong type, dropped
+E:FireServer("Fossils", 999999999)     -- not a setting, dropped
+E:FireServer("Particles", "Ultra")     -- not an allowed option, dropped
+```
+
+The third one is the important one: `Fossils` is not in `SettingsSchema`, so the
+setting path cannot be used to write currency.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| `State ready` never prints | Server `Replication` failed its boot assert — read the server output first |
+| Client state is empty but no error | `StateController` not inside `SAD_Client/Controllers`, or misnamed |
+| `requested module was required recursively` | `Replication` pasted as a sibling of `PlayerDataService` instead of a child |
+| Deltas arrive but nothing updates | A write used raw table access instead of `Update`/`UpdateKeys` |
+| Client sees a stale value forever | That write bypassed `UpdateKeys`; there is no polling fallback by design |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,033 assertions** without Studio:
+Syntax-checks every source file and runs **1,230 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -385,6 +498,7 @@ Fetches the Luau CLI on first run.
 | `tests/step1_spec.lua` | `Format`, `TableUtil`, `RNG`, `Signal`, `Trove` |
 | `tests/step2_spec.lua` | `ProfileTemplate` drift, the migration chain and its failure modes, and the full migrate → reconcile → write-in-place load path against a realistic old save |
 | `tests/step3_spec.lua` | Every content number against the design docs, the full zone × rarity coverage matrix, and 18 deliberately broken configs the validator must reject |
+| `tests/step4_spec.lua` | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

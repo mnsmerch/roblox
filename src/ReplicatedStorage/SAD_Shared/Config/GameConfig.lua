@@ -71,6 +71,32 @@ GameConfig.SpeedToleranceMultiplier = 1.6 -- movement plausibility slack
 GameConfig.ExploitFlagsBeforeThrottle = 20
 GameConfig.ExploitFlagWindowSecs = 60
 
+--[[
+	Settings a client is allowed to write, with the rules the server enforces.
+
+	Settings are the ONLY profile field a client may change directly, which
+	makes this the smallest complete example of the input contract: a known key,
+	a matching type, numbers clamped rather than rejected, strings restricted to
+	an allow-list. Anything else is dropped without telling the client which
+	guard tripped.
+
+	Mirrors docs/06-progression.md §8.
+]]
+GameConfig.SettingsSchema = {
+	MusicVolume = { Type = "number", Min = 0, Max = 100 },
+	SfxVolume = { Type = "number", Min = 0, Max = 100 },
+	RareAnnouncements = { Type = "boolean" },
+	StealNotifications = { Type = "boolean" },
+	TradeRequests = { Type = "boolean" },
+	CameraShake = { Type = "boolean" },
+	Particles = { Type = "string", OneOf = { "High", "Medium", "Off" } },
+	LowGraphics = { Type = "boolean" },
+	ShowNameTags = { Type = "boolean" },
+	ScreenEffects = { Type = "boolean" },
+	UiScale = { Type = "number", Min = 80, Max = 130 },
+	AutoCollect = { Type = "boolean" },
+}
+
 -- ── Carry / theft grace ─────────────────────────────────────────────────────
 GameConfig.CarryTokenGraceSecs = 30 -- disconnect-while-carrying resolution delay
 GameConfig.LooseEggLifetimeSecs = 10

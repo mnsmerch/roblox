@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 3 of 24 complete.** Awaiting the Studio Play test before Step 4.
+## Status: **Step 4 of 24 complete.** Awaiting the Studio Play test before Step 5.
 
 ## Completed
 
@@ -13,6 +13,8 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 1** — project skeleton & shared modules | 11 files, 83 offline assertions |
 | 2026-08-29 | **Step 2** — DataService & PlayerDataService | ProfileStore-backed persistence, 150 more assertions |
 | 2026-08-29 | **Step 3** — config modules & ConfigValidator | All V1 content data, 800 more assertions |
+| 2026-08-29 | Glitch Compsognathus added (species #35) | The any-zone Secret; approved as V1 scope |
+| 2026-08-29 | **Step 4** — state replication | Shared `Patch` module, allowlist boundary, 183 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -21,7 +23,7 @@ accident. Updated at the end of every build step.
 | 1 | Project skeleton & shared modules | ✅ **done** |
 | 2 | DataService & PlayerDataService | ✅ **done** |
 | 3 | Config modules & ConfigValidator | ✅ **done** |
-| 4 | State replication | ⬜ |
+| 4 | State replication | ✅ **done** |
 | 5 | HUD skeleton | ⬜ |
 | 6 | Park plots | ⬜ |
 | 7 | Nests & the world | ⬜ |
@@ -67,6 +69,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Modules/Format` | ModuleScript | `Number/Comma/Time/Clock/Odds/Percent/Multiplier` |
 | `Modules/RNG` | ModuleScript | `new/WeightedPick/ApplyLuck/ApplyModifiers/Chance/Shuffle/Pick/ProbabilityOf` |
 | `Modules/Net` | ModuleScript | Remote inventory, rate limits, arg validation |
+| `Modules/Patch` | ModuleScript | Structural diff + apply, shared by both sides of replication |
 | `SAD_Assets/{Dinos,Eggs,Effects,UI}` | Folders | Empty until Step 7 |
 
 ### Created at runtime (do NOT build by hand)
@@ -86,6 +89,7 @@ rebuilds this on every server start.
 | `Services/DataService/ProfileTemplate` | ModuleScript | Schema v1 defaults; mirrors docs/10 |
 | `Services/DataService/Migrations` | ModuleScript | Ordered pure migrations + `Validate`/`Apply`/`WriteInPlace` |
 | `Services/PlayerDataService` | ModuleScript | Profile access layer for every other service |
+| `Services/PlayerDataService/Replication` | ModuleScript | The client mirror: allowlist slice, 5 Hz coalesced deltas |
 
 **Public API in use (frozen):**
 
@@ -101,16 +105,38 @@ PlayerDataService.Get(player) -> data?
 PlayerDataService.GetAsync(player, timeout?) -> data?
 PlayerDataService.IsLoaded(player) -> boolean
 PlayerDataService.Update(player, mutator, reason?) -> boolean
+PlayerDataService.UpdateKeys(player, keys, mutator, reason?) -> boolean
 PlayerDataService.Save(player, reason)
+PlayerDataService.SendFullState(player)
 PlayerDataService.GetAll() -> {[Player]: data}
 PlayerDataService.ProfileLoaded     Signal(player, data)
 PlayerDataService.ProfileUnloading  Signal(player, data)
-PlayerDataService.Changed           Signal(player, reason)
+PlayerDataService.Changed           Signal(player, reason, keys?)
 ```
 
-Rule for later steps: **reads use `Get`, writes use `Update`.** Step 4's
-replication layer listens to `Changed`, so a write that bypasses `Update` is a
-write the client never hears about.
+Rule for later steps: **reads use `Get`, writes use `UpdateKeys`** (or `Update`
+when unsure what changed — it marks everything dirty, costing one wider diff
+rather than a desynced client). A write that bypasses both is a write the
+client never hears about; there is no polling fallback by design.
+
+### StarterPlayerScripts/SAD_Client/Controllers
+
+| Object | Type | Purpose |
+|---|---|---|
+| `StateController` | ModuleScript | The client's mirror of its own profile slice |
+
+```
+StateController.Get() -> state
+StateController.GetPath(path) -> value?
+StateController.IsReady() -> boolean
+StateController.Observe(path, fn) -> { Disconnect }
+StateController.Resync()  -- yields
+StateController.Ready    Signal()
+StateController.Changed  Signal(paths)
+```
+
+`Observe` is the pattern every UI element uses: it fires immediately with the
+current value, then on every change at or under that path. No polling anywhere.
 
 ### StarterPlayerScripts/SAD_Client
 
@@ -132,17 +158,20 @@ write the client never hears about.
 | 7 | Several species placed in earlier zones than docs/01 assigns (marked `V1_PLACEMENT`) | docs/01 assigns zones assuming all ten exist. With four, a Legendary has to be reachable somewhere or Zone 4's Legendary weight rolls a rarity that cannot hatch | docs/01 §3 |
 | 8 | Park starts at **4** placement slots, not 8 | docs/12 said 8, docs/05's upgrade track said 4→30. Resolved to the economy model, which the whole cost curve is built on | docs/12 §2 |
 | 9 | Dino Storage maxes at **205**, not 200 | 25 base + 12 levels × 15 = 205. The docs' endpoint and its own level maths disagreed | docs/05 §5, docs/06 §1 |
+| 10 | Added `Patch` as shared module #9; diff/apply is shared code, not written twice | The delta producer and consumer must agree exactly. Separate implementations let them disagree — a numeric key stringified on one side, a removal mishandled on the other — and desync an inventory in a way that reads as a gameplay bug | docs/09 §1, §4 |
+| 11 | `StateDelta` carries an **array** of patches, not one `{path, value}` | One packet per flush instead of one per changed field. A realistic gameplay tick produces 10 patches | docs/09 §3.2 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 22 source files and runs **1,033
-assertions** outside Roblox. Last run: **1,033 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 26 source files and runs **1,230
+assertions** outside Roblox. Last run: **1,230 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
 | `step1_spec` (83) | `Format`, `TableUtil`, `RNG`, `Signal`, `Trove` |
 | `step2_spec` (150) | Template drift, migration chain + failure modes, full load path |
-| `step3_spec` (800) | Every content number against the design docs, the full 28-combination coverage matrix, and 18 deliberately broken configs the validator must reject |
+| `step3_spec` (731) | Every content number against the design docs, the full coverage matrix, and 18 deliberately broken configs the validator must reject |
+| `step4_spec` (183) | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 
 Bugs the specs caught before they shipped:
 
@@ -159,6 +188,9 @@ Bugs the specs caught before they shipped:
    while V1 ships no species in those tiers, and Zone 1 rolled Epic and
    Legendary with nothing in range to hatch. Resolved by deviations #6 and #7
    rather than by weakening the rule.
+4. `Replication.Flush` called `require(script.Parent)` inside the 5 Hz loop.
+   Safe, but a require in a hot path; hoisted into `Init`, where the parent has
+   provably finished loading.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

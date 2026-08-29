@@ -17,7 +17,7 @@
 	═════════════════════════════════════════════════════════════════════════
 
 	═══ V1 SCOPE NOTE ═══════════════════════════════════════════════════════
-	docs/01 assigns zones assuming all ten exist. V1 has four, so several
+	35 species in V1. docs/01 assigns zones assuming all ten exist. V1 has four, so several
 	species are placed earlier than their eventual home - a Legendary has to be
 	reachable somewhere or Zone 4's Legendary weight rolls a rarity the game
 	cannot hatch. These ranges shift up as zones 5-10 ship. The species that
@@ -248,11 +248,28 @@ species({ Id = "trex", DisplayName = "Tyrannosaurus Rex", Rarity = "legendary",
 
 -- ═══ SECRET (1) ════════════════════════════════════════════════════════════
 
+--[[
+	The joke Secret, and the single best clip generator in the game.
+
+	A Compsognathus with a corrupted texture that teleports a few studs at
+	random. Its SpeciesFactor of 0.60 makes it the WORST Secret by income -
+	which is the joke - but it can drop from any zone including Zone 1, at
+	1 in 10,526,316 there. That is a brand-new player's first-egg lottery
+	ticket, and the clip of a starter-zone player hitting it spreads further
+	than any amount of endgame content.
+
+	Art cost is a retexture of an existing model plus one VFX, which is why it
+	earns its slot in a 35-species V1 roster.
+]]
+species({ Id = "glitchcompy", DisplayName = "Glitch Compsognathus", Rarity = "secret",
+	SpeciesFactor = 0.60, Size = "1x1", ChaseArchetype = "glitcher",
+	Zones = ALL_V1_ZONES,
+	Description = "s̷o̶m̸e̷t̴h̵i̸n̷g̶ ̴i̵s̶ ̸w̷r̴o̵n̸g̷ ̶w̸i̵t̴h̶ ̷t̸h̴i̵s̶ ̷o̴n̵e̸" })
+
 species({ Id = "voidraptor", DisplayName = "Void Raptor", Rarity = "secret",
 	SpeciesFactor = 1.00, Size = "3x3", ChaseArchetype = "blinker",
-	-- Every zone carries Secret weight, and V1 has exactly one Secret, so it
-	-- has to cover all of them. Zone 1's 1-in-5,263,158 is the brand-new
-	-- player's lottery ticket, and that clip is worth more than the model.
+	-- Both Secrets cover every zone, so a Secret roll always has something to
+	-- hatch and each is half as likely as the tier itself.
 	Zones = ALL_V1_ZONES,
 	Description = "It was not in the nest a second ago." })
 

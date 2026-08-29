@@ -34,6 +34,7 @@ ReplicatedStorage
     │   ├── Types                    (ModuleScript)  Luau type exports
     │   ├── Log                      (ModuleScript)  scoped, level-filtered logging
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
+    │   ├── Patch                    (ModuleScript)  structural diff + apply (shared)
     │   ├── Signal                   (ModuleScript)  lightweight event class
     │   ├── RNG                      (ModuleScript)  weighted pick, luck maths
     │   ├── Format                   (ModuleScript)  number/time formatting
@@ -212,7 +213,7 @@ over-limit calls silently, and logs offenders to `SecurityService`.
 
 | Name | Payload |
 |---|---|
-| `StateDelta` | `{path: {string}, value: any}` — patches the client's profile mirror |
+| `StateDelta` | **an array** of `{Path: {key}, Value: any}` / `{Path: {key}, Remove: true}` patches. Batched — one packet per flush, not one per field. Path keys keep their native type |
 | `StateFull` | full replicated profile snapshot (on join and on rebirth) |
 | `Notify` | `{kind: "toast"\|"banner"\|"takeover"\|"alert", text, color, sfx, duration}` |
 | `HatchResult` | `{dinoUid, speciesId, rarity, mutation, mutation2?, stars, odds}` |
@@ -253,7 +254,29 @@ players):        park layout, placed dinosaurs, park value, name tag tier
 
 On join: `StateFull`. Thereafter: `StateDelta` patches, coalesced and flushed on
 a **5 Hz** timer so a burst of changes costs one packet. Currency changes flush
-immediately (they need to feel instant).
+immediately (they need to feel instant), with a 50 ms floor so a burst of income
+collection cannot become a remote call per frame.
+
+**The slice is an allowlist.** Fields are withheld by default and must be named
+in `Replication.REPLICATED` to be sent. A denylist leaks every field somebody
+adds later and forgets about, silently. `Replication.Init` asserts that every
+key in `ProfileTemplate` appears in exactly one of `REPLICATED` or `WITHHELD`,
+so adding a profile field **fails the boot** until someone decides about it.
+Currently withheld: `ProcessedReceipts`, `RobuxSpent`, `LastSeen`,
+`FirstJoinAt`, `SchemaVersion`.
+
+**Diffing is shared code.** `SAD_Shared/Modules/Patch` holds both `Diff` and
+`Apply`, required by the server that produces deltas and the client that
+consumes them. Writing them separately would let the two sides disagree about
+what a patch means — a numeric key stringified on one side, a removal
+mishandled on the other — and desync a player's inventory in a way that reads
+as a gameplay bug. One implementation, one set of tests, and the round-trip
+property (`apply(diff(a,b), a) == b`) asserted directly.
+
+Diff depth is **3**, which gives per-field granularity for every shape in the
+schema (`Dinos → uid → field`, `Quests → Daily → questId → field`) and ships
+anything deeper wholesale. Past 60 patches in one flush a full snapshot is sent
+instead — cheaper to build, cheaper to send, and far easier to reason about.
 
 Public park data is exposed via `GetParkSnapshot` and via `Attributes` on the
 plot model, not by replicating other players' full profiles.
