@@ -1,0 +1,30 @@
+{
+  "name": "steal-a-dinosaur",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$className": "ReplicatedStorage",
+      "SAD_Shared": {
+        "$path": "src/ReplicatedStorage/SAD_Shared"
+      }
+    },
+
+    "ServerScriptService": {
+      "$className": "ServerScriptService",
+      "SAD_Server": {
+        "$path": "src/ServerScriptService/SAD_Server"
+      }
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "SAD_Client": {
+          "$path": "src/StarterPlayer/StarterPlayerScripts/SAD_Client"
+        }
+      }
+    }
+  }
+}

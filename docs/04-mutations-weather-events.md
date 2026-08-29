@@ -147,7 +147,7 @@ clips.
 | Legendary hatch | server toast | `🦴 DAVID hatched a LEGENDARY Spinosaurus!` |
 | Mythic hatch | server banner + SFX | `🔥 MYTHIC! DAVID hatched Emberback Spinosaurus!` |
 | Ancient hatch | banner + camera cut to their park | `🗿 ANCIENT! ...` |
-| Secret hatch | full-screen takeover + **cross-server** | `NO WAY! DAVID HATCHED A VOID RAPTOR! — 1 IN 5,263,157` |
+| Secret hatch | full-screen takeover + **cross-server** | `NO WAY! DAVID HATCHED A VOID RAPTOR! — 1 IN 5,263,158` |
 | Titan hatch | takeover + cross-server + badge | `⚡ A TITAN HAS HATCHED ⚡` |
 | Mutation ≥ Galaxy | banner + cross-server | `🌌 GALAXY MUTATION! DAVID's Triceratops — 1 IN 100,000` |
 | Prime mutation | banner + cross-server | `✦ PRIME ✦ DAVID hatched a VOID GOLDEN T-REX!` |
@@ -157,7 +157,7 @@ clips.
 | Weather: Blood Moon / Eclipse / Aurora | banner | `🌑 BLOOD MOON — SHADOW MUTATIONS ×20` |
 | Event countdown | banner | `☄️ METEOR IMPACT IN 60 SECONDS!` |
 
-**Always show the odds** on rare announcements. "1 IN 5,263,157" is the number
+**Always show the odds** on rare announcements. "1 IN 5,263,158" is the number
 people screenshot. Cross-server delivery uses `MessagingService` with a
 per-server rate budget and a client-side queue that never shows more than one
 takeover at a time.

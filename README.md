@@ -2,14 +2,24 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status:** Design phase complete. No code written yet.
-> Say **START BUILDING** to begin Step 1 of the build order.
+> **Status:** Step 1 of 24 complete — project skeleton and shared modules.
+> See [PROGRESS.md](PROGRESS.md) for what exists and [SETUP.md](SETUP.md) for
+> how to get it into Roblox Studio.
 
 ## The 8-second pitch
 
 You own a Dinosaur Park. Dinosaurs in your park print money. You don't buy
 dinosaurs — you **steal their eggs from wild nests** while a very angry mother
 dinosaur chases you home. Then other players try to steal your dinosaurs.
+
+## Repository layout
+
+```
+src/      Luau source, mirroring the Roblox Studio tree exactly
+tests/    Offline specs — ./tests/run.sh (no Studio needed)
+docs/     The design blueprint (below)
+SETUP.md  How to get src/ into Studio
+```
 
 ## Documentation index
 

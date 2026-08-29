@@ -31,6 +31,7 @@ ReplicatedStorage
     │   └── IndexConfig              (ModuleScript)  milestone rewards
     ├── Modules                      (Folder)
     │   ├── Types                    (ModuleScript)  Luau type exports
+    │   ├── Log                      (ModuleScript)  scoped, level-filtered logging
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
     │   ├── Signal                   (ModuleScript)  lightweight event class
     │   ├── RNG                      (ModuleScript)  weighted pick, luck maths
@@ -130,9 +131,27 @@ place to add a service. Every other unit is a ModuleScript.
 ## 2. Bootstrap order
 
 `ServerScriptService/SAD_Server/Bootstrap` requires services in dependency
-order, calls `Service.Init()` on all of them, then `Service.Start()` on all of
-them. Two phases means services can reference each other in `Start` without
-caring about require order.
+order, calls `Service.Init(app)` on all of them, then `Service.Start(app)` on
+all of them. Two phases means services can reference each other in `Start`
+without caring about require order.
+
+**The service contract:**
+
+```lua
+local MyService = {}
+function MyService.Init(app) end   -- own state only; do not call other services
+function MyService.Start(app) end  -- everything is loaded; cross-calls are safe
+return MyService
+```
+
+`app` is **injected**, not required. `StealService` needs `ParkService` and
+`ParkService` needs `StealService`; a direct `require` in both directions
+deadlocks. `app` exposes `Get(name)`, `Log`, `Net`, `Config`, `IsServer` (and
+`Player` on the client). Controllers follow the identical contract.
+
+Services listed in `SERVICE_ORDER` that do not yet exist on disk are **skipped**,
+not errors — that is what lets each build step add one service without editing
+Bootstrap.
 
 ```
 1  SecurityService      2  DataService         3  PlayerDataService
@@ -397,6 +416,7 @@ which are already moderated, so no raw user strings enter announcements in V1.
 | Layer | Method |
 |---|---|
 | Config integrity | A `ConfigValidator` module run at boot in Studio: asserts weight tables sum to their totals, every `DinoConfig.Zones` id exists, every asset name resolves |
+| Offline specs | `./tests/run.sh` syntax-checks every source file with `luau-compile` and runs assertions against the pure modules outside Roblox. Fast enough to run on every change |
 | Pure logic | `RNG`, `Format`, economy formulas and migrations are pure functions with a `TestEZ`-style spec run in Studio via a `RunTests` script |
 | Integration | Studio `Play Solo` checklists per build step (each step in [13-build-order.md](13-build-order.md) ships with its own test list) |
 | Multiplayer | Studio "Start Server + 2 Players" for every steal/raid change — never test stealing in solo |
