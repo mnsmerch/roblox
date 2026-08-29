@@ -45,10 +45,20 @@ GameConfig.ParkDinoTickHz = 2 -- shared park wander loop
 GameConfig.SecuritySampleHz = 4 -- movement plausibility sampling
 
 -- ── Persistence ─────────────────────────────────────────────────────────────
+GameConfig.DataStoreName = "SAD_Profiles_v1"
 GameConfig.AutosaveIntervalSecs = 180
 GameConfig.AutosaveJitterSecs = 30 -- spreads DataStore load across players
 GameConfig.BindToCloseTimeoutSecs = 25
-GameConfig.SaveRetryAttempts = 5
+
+--- How long without a successful save before DataService raises SaveStalled.
+--- ProfileStore retries individual writes internally, so a single failure is
+--- invisible to us; a long silence is the signal that actually matters.
+GameConfig.SaveStalledWarningSecs = 600
+
+--- Studio-only escape hatch: use ProfileStore's in-memory mock store so the
+--- game runs without API Services enabled. Mock data is DISCARDED on stop.
+--- Must be false for anything you intend to keep.
+GameConfig.UseMockDataInStudio = false
 
 -- ── Performance caps ────────────────────────────────────────────────────────
 GameConfig.MaxActiveGuardians = 20 -- beyond this, steals get a client-only Ghost Chase

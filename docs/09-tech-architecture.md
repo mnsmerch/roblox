@@ -282,9 +282,25 @@ I'll build against ProfileStore by default and note the swap point.
 - Save on `PlayerRemoving` and on `game:BindToClose` (with a `task.wait` fence).
 - Save immediately after: rebirth, a Robux purchase, any Legendary+ hatch, a
   completed steal.
-- On save failure: retry 5× with backoff; on total failure, keep the session
-  lock, warn the player with a banner, and block further Robux purchases.
+- **On save failure:** ProfileStore performs its own internal write retries, so
+  a single failed write is not observable to us and a manual retry loop on top
+  would fight it. What *is* observable — and what actually matters — is a long
+  silence. `DataService` tracks the time since the last successful save and
+  raises a `SaveStalled` signal after `GameConfig.SaveStalledWarningSecs`
+  (600 s). Step 16 turns that signal into a player-facing banner and Step 21
+  gates Robux purchases on it.
+  *(Adapted from the original "retry 5× with backoff" plan once ProfileStore
+  was chosen — see PROGRESS.md deviation #4.)*
 - `game:BindToClose` waits for all outstanding saves (max 25 s).
+
+**Schema safety, enforced at boot.** `DataService.Init` asserts two invariants
+before the store is opened, because both failures are silent and server-wide:
+1. `Migrations.Validate()` — the migration chain is contiguous from 1 with no
+   gaps and no non-function entries. A migration stranded past a gap never
+   runs, so profiles would load claiming an old version while the code assumed
+   the new shape.
+2. `ProfileTemplate.SchemaVersion == Migrations.CurrentVersion()` — bumping the
+   schema without adding the matching migration means *nobody can log in*.
 
 **Schema versioning**: every profile carries `SchemaVersion`. `DataService`
 runs an ordered migration chain `v1→v2→v3…`. Migrations are pure functions,

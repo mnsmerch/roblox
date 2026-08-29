@@ -6,7 +6,6 @@
 	pasted into Studio.
 
 	Run with:  ./tests/run.sh
-	Requires:  the Luau CLI (tests/run.sh fetches it if missing)
 
 	Only genuinely pure modules are covered here. Net, Log and both Bootstraps
 	depend on Roblox services and are verified by the in-Studio test list in
@@ -32,7 +31,7 @@ function RandomMT:NextInteger(a, b)
 end
 Random = { new = function(seed) return setmetatable({ s = seed or 12345 }, RandomMT) end }
 
---@INJECT_MODULES@
+--@INJECT Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua TableUtil=src/ReplicatedStorage/SAD_Shared/Modules/TableUtil.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Signal=src/ReplicatedStorage/SAD_Shared/Modules/Signal.lua Trove=src/ReplicatedStorage/SAD_Shared/Modules/Trove.lua@
 local passed, failed = 0, 0
 local function eq(label, got, want)
     if got == want then passed = passed + 1
