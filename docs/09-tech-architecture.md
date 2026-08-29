@@ -36,6 +36,7 @@ ReplicatedStorage
     │   ├── Log                      (ModuleScript)  scoped, level-filtered logging
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
     │   ├── Patch                    (ModuleScript)  structural diff + apply (shared)
+    │   ├── AssetBuilder             (ModuleScript)  placeholder model generation
     │   ├── Signal                   (ModuleScript)  lightweight event class
     │   ├── RNG                      (ModuleScript)  weighted pick, luck maths
     │   ├── Format                   (ModuleScript)  number/time formatting
@@ -62,7 +63,9 @@ ServerScriptService
         ├── EconomyService           Fossils/DNA mutations, income ticking, offline
         ├── ParkService              plot assign/release, placement grid, defences
         │   └── PlotBuilder          procedural plot geometry
-        ├── NestService              nest spawn/respawn/claim
+        ├── NestService              world blockout, nest spawn/respawn/claim
+        │   ├── WorldBuilder         procedural hub + zone geometry
+        │   └── NestBuilder          nest bowl, eggs, sign
         ├── EggService               pickup, carry tokens, deposit
         ├── WildAIService            guardian spawn, chase ticking, de-aggro
         ├── IncubationService        timers, hatch resolution

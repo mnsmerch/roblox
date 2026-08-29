@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 34 source files and runs **1,468 assertions**: the economy
+Syntax-checks all 39 source files and runs **1,824 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -136,10 +136,13 @@ top-left and five buttons along the bottom.
 | 24 park plots | Two clients get two plots; leaving frees one |
 | Park occupancy | Walk through a gate, `ParkEntered` fires |
 | Grid ↔ world maths | Drop a marker on tile (4,4), it lands square |
+| Hub, 4 zones, 48 nests | Walk out of your park; read a nest sign's odds |
+| Egg claiming + respawn | Hold E on an egg; wait 45s and it comes back |
+| Placeholder art | 35 dinosaur models and 10 eggs generate themselves |
 
-**Not built yet:** zones, nests, eggs, dinosaurs, income, upgrades, stealing.
-Steps 7–24. The bottom-bar buttons log `No screen registered` — that warning is
-correct, the screens arrive in Step 13.
+**Not built yet:** carrying eggs, chases, hatching, income, upgrades, stealing
+from players. Steps 8–24. The bottom-bar buttons log `No screen registered` —
+that warning is correct, the screens arrive in Step 13.
 
 ---
 

@@ -21,9 +21,22 @@ progression motivator in the whole map.
                              Z3 SWAMP LANDS
 ```
 
-**Scale target:** hub ≈ 400×400 studs. Each zone ≈ 350×350 studs. Full map
-≈ 2200×2200 studs. Run time hub→Z1 entrance ≈ 6 s; hub→Z10 entrance ≈ 40 s
-(before teleports are unlocked).
+**Scale, as built.** Every radius is derived rather than chosen, so changing a
+count cannot silently overlap anything:
+
+| Ring | Extent | Derived from |
+|---|---|---|
+| Hub plaza | 0 → 520 | reaches the park ring's inner edge |
+| Park ring | 513 → 633 | `24 × (120 + 30) ÷ 2π` = 573 centre |
+| Walk | 633 → 775 | 142 studs of open ground |
+| Zone ring | 775 → 1125 | 950 centre, zones 350 across |
+
+Zones occupy **10 reserved slots** even though V1 fills four, so zones 5–10 drop
+into their eventual positions without moving a landmark a player has learned.
+Slot 1 is on +X and they run anticlockwise in zone order, so progressing means
+physically walking further around the ring. At the full ten-zone build-out
+neighbouring zones still clear each other by 168 studs — asserted in
+`tests/step7_spec.lua`.
 
 ### 1.1 The Hub contains
 
@@ -91,7 +104,11 @@ to be *taught* what rebirth is.
 
 Each zone contains:
 
-- **6–14 nest sites** at fixed anchor points (`NestAnchor` tagged parts).
+- **6–14 nest sites** at parts tagged `SAD_NestAnchor`. Positions come from a
+  **golden-angle spiral**: deterministic, so a nest is in the same place every
+  session and players learn the map, and evenly spread without the clustering
+  random scatter produces. No seeds and no hand-tuning; the spec asserts a
+  minimum 26-stud gap holds even if `NestCount` is raised to 24.
 - **1–3 Landmark props** for navigation (a crashed helicopter, a giant skull
   arch, a frozen mammoth, a broken obelisk).
 - **1 Shortcut** back toward the hub — a zipline, river, or drop tube. Shortcuts

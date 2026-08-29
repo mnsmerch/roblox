@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 6 of 24 complete.** Awaiting the Studio Play test before Step 7.
+## Status: **Step 7 of 24 complete.** Awaiting the Studio Play test before Step 8.
 
 ## Completed
 
@@ -17,6 +17,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 4** — state replication | Shared `Patch` module, allowlist boundary, 183 more assertions |
 | 2026-08-29 | **Step 5** — HUD skeleton | UI built in code, 96 more assertions |
 | 2026-08-29 | **Step 6** — park plots | 24 plots generated procedurally, 142 more assertions |
+| 2026-08-29 | **Step 7** — world, zones & nests | Hub + 4 zones + 48 nests generated, 356 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -28,7 +29,7 @@ accident. Updated at the end of every build step.
 | 4 | State replication | ✅ **done** |
 | 5 | HUD skeleton | ✅ **done** |
 | 6 | Park plots | ✅ **done** |
-| 7 | Nests & the world | ⬜ |
+| 7 | Nests & the world | ✅ **done** |
 | 8 | Egg pickup & carrying | ⬜ |
 | 9 | Guardian AI & the chase | ⬜ |
 | 10 | Safe zone & deposit | ⬜ |
@@ -73,6 +74,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Modules/RNG` | ModuleScript | `new/WeightedPick/ApplyLuck/ApplyModifiers/Chance/Shuffle/Pick/ProbabilityOf` |
 | `Modules/Net` | ModuleScript | Remote inventory, rate limits, arg validation |
 | `Modules/Patch` | ModuleScript | Structural diff + apply, shared by both sides of replication |
+| `Modules/AssetBuilder` | ModuleScript | Placeholder egg + dinosaur models; only fills what is missing |
 | `SAD_Assets/{Dinos,Eggs,Effects,UI}` | Folders | Empty until Step 7 |
 
 ### Created at runtime (do NOT build by hand)
@@ -95,6 +97,24 @@ rebuilds this on every server start.
 | `Services/PlayerDataService/Replication` | ModuleScript | The client mirror: allowlist slice, 5 Hz coalesced deltas |
 | `Services/ParkService` | ModuleScript | Plot ownership, park occupancy, grid ↔ world |
 | `Services/ParkService/PlotBuilder` | ModuleScript | Procedural plot geometry |
+| `Services/NestService` | ModuleScript | World blockout, nest state, egg claiming, respawn |
+| `Services/NestService/WorldBuilder` | ModuleScript | Hub plaza + 4 zone blockouts + tagged anchors |
+| `Services/NestService/NestBuilder` | ModuleScript | Nest bowl, generic eggs, risk/odds sign |
+
+```
+NestService.GetNest(nestId) -> nest?
+NestService.GetNestsInZone(zoneId) -> { nest }
+NestService.ClaimEgg(player, nestId, slotIndex) -> ok, reason   -- yield-free
+NestService.IsSlotFilled(nestId, slotIndex) -> boolean
+NestService.CountAvailableEggs(zoneId?) -> number
+NestService.EggClaimed / NestRefilled   Signals
+```
+
+Generated at runtime into `Workspace/SAD_World` (hub, zones) and
+`Workspace/SAD_Runtime/Nests`. 48 nests, 122 eggs. Anchors are discovered
+through the `SAD_NestAnchor` **CollectionService tag**, not from the builder's
+return value — so a hand-built zone can replace a generated one with no code
+change.
 
 ```
 ParkService.GetPlot(player) -> Model?
@@ -220,11 +240,14 @@ current value, then on every change at or under that path. No polling anywhere.
 | 16 | Added `ParkConfig` (plot geometry, grid maths, visual tiers) | Shared, because the client's placement preview must land where the server puts the dinosaur. Two copies of a grid origin is two grids | docs/09 §1 |
 | 17 | `Players.CharacterAutoLoads = false`; characters spawned after plot assignment | Otherwise a player materialises at the world origin and is visibly teleported — in the first second of the game, against FTUE beat 1 | docs/00 §3 |
 | 18 | Plot ring radius **derived** from `PlotCount × (PlotSize + PlotGap)`, gap raised 20 → 30 | A hand-picked radius overlaps plots the moment `PlotCount` changes. 20 studs of gap left only 6 studs of separating-axis margin | docs/02 §3 |
+| 19 | Added `AssetBuilder` as shared module #10 | Placeholder models make ConfigValidator rule 7 a real check instead of a permanently skipped one, and unblock Steps 11–12 before any art exists. Only fills what is missing, so the art handover can be one species at a time | docs/09 §1 |
+| 20 | Zone ring uses **10 reserved slots** at a derived radius of 950 | Zones 5–10 then land in their final positions without moving a landmark players have learned. Doc 02's hand-drawn compass arrangement is replaced by an even ring ordered by difficulty, which the doc itself asks for ("clockwise by difficulty") | docs/02 §1 |
+| 21 | Nest positions come from a golden-angle spiral, not hand-placed anchors | Deterministic (players learn the map), evenly spread without random clustering, and provably non-overlapping even if `NestCount` is raised | docs/02 §2.3 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 35 source files and runs **1,468
-assertions** outside Roblox. Last run: **1,468 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 39 source files and runs **1,824
+assertions** outside Roblox. Last run: **1,824 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -234,6 +257,7 @@ assertions** outside Roblox. Last run: **1,468 passed, 0 failed.**
 | `step4_spec` (183) | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 | `step5_spec` (96) | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, design-token ordering |
 | `step6_spec` (142) | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap at 24 and 48 plots, and the plot depth budget |
+| `step7_spec` (356) | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection, risk ratings |
 
 Bugs the specs caught before they shipped:
 
@@ -267,6 +291,11 @@ Bugs the specs caught before they shipped:
    with a −14 offset, so it poked 2 studs through the back wall, and the vault
    row sat on top of it. Neither throws — it renders as dinosaurs clipping into
    pedestals. Tile size is now 10 and the whole depth budget is asserted.
+8. `NestBuilder.RespawnEgg` recovered the nest's anchor position by un-rotating
+   the bowl's CFrame. That works until the bowl changes shape, then respawned
+   eggs drift somewhere else. The anchor is now stored as an attribute, and one
+   `createEgg` path serves both the initial build and respawn — two
+   construction paths is two sets of attributes to forget to set.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

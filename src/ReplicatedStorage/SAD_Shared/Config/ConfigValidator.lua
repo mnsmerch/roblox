@@ -236,7 +236,9 @@ local function ruleAssetsExist(report, c)
 	local dinos = c.Assets.Dinos or {}
 	local eggs = c.Assets.Eggs or {}
 
+	local checked = 0
 	for id, entry in c.Dino.Species do
+		checked += 1
 		if not dinos[entry.ModelName] then
 			fail(report, "R7", "species '%s' needs model '%s' in SAD_Assets/Dinos", id, entry.ModelName)
 		end
@@ -244,7 +246,14 @@ local function ruleAssetsExist(report, c)
 			fail(report, "R7", "species '%s' needs egg model '%s' in SAD_Assets/Eggs", id, entry.EggModelName)
 		end
 	end
-	pass(report, "R7", "all species models resolve")
+
+	-- The generic nest egg. No species names it - rarity is not rolled until
+	-- pickup - so nothing above would catch it going missing.
+	if not eggs.Egg_Wild then
+		fail(report, "R7", "SAD_Assets/Eggs/Egg_Wild is missing - nests have nothing to show")
+	end
+
+	pass(report, "R7", "%d species models and the wild egg resolve", checked)
 end
 
 --- Rule 8: every event names a handler module that exists.
@@ -457,12 +466,23 @@ function ConfigValidator.RunDefault()
 		return if child then require(child) else nil
 	end
 
+	-- Assets are read through AssetBuilder's manifest, which is populated by
+	-- Bootstrap before this runs. If SAD_Assets does not exist yet, rule 7
+	-- reports itself skipped rather than failing the boot.
+	local assets = nil
+	local modules = parent.Parent:FindFirstChild("Modules")
+	local assetBuilder = modules and modules:FindFirstChild("AssetBuilder")
+	if assetBuilder then
+		assets = require(assetBuilder).Manifest()
+	end
+
 	return ConfigValidator.Run({
 		Rarity = require(parent.RarityConfig),
 		Mutation = require(parent.MutationConfig),
 		Dino = require(parent.DinoConfig),
 		Zone = require(parent.ZoneConfig),
 		Upgrade = require(parent.UpgradeConfig),
+		Assets = assets,
 		Event = optional("EventConfig"),
 		Product = optional("ProductConfig"),
 	})

@@ -2,8 +2,8 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status:** Steps 1–6 of 24 complete. Data, config, replication, HUD and park
-> plots are in. See [PROGRESS.md](PROGRESS.md) for what exists,
+> **Status:** Steps 1–7 of 24 complete. Data, config, replication, HUD, park
+> plots, and the world with its nests are in. See [PROGRESS.md](PROGRESS.md) for what exists,
 > [QUICKSTART.md](QUICKSTART.md) to run it, and [SETUP.md](SETUP.md) for the
 > per-step Studio detail.
 
@@ -19,7 +19,7 @@ dinosaur chases you home. Then other players try to steal your dinosaurs.
 offline test to a full Studio setup.
 
 ```bash
-./tests/run.sh    # 1,468 assertions, no Studio needed
+./tests/run.sh    # 1,824 assertions, no Studio needed
 ```
 
 ## Repository layout

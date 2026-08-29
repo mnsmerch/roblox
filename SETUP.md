@@ -267,6 +267,26 @@ their own ground. Step 7 builds the hub and zones.
 
 ---
 
+## Step 7 — the world and nests
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Modules/AssetBuilder` | `src/.../Modules/AssetBuilder.lua` *(new)* |
+| `SAD_Shared/Config/ZoneConfig` | *(re-paste — gained ring geometry)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — rule 7 is now live)* |
+| `SAD_Server/Bootstrap` | *(re-paste — runs AssetBuilder before validation)* |
+| `Services/NestService` | `src/.../NestService/init.lua` *(new)* |
+| `Services/NestService/WorldBuilder` | `src/.../NestService/WorldBuilder.lua` *(new)* |
+| `Services/NestService/NestBuilder` | `src/.../NestService/NestBuilder.lua` *(new)* |
+
+`NestService` is a ModuleScript with **two** ModuleScript children.
+
+Nothing goes in Workspace by hand — the hub, four zones and 48 nests generate at
+boot, and the previous world is destroyed each run. `SAD_Assets` fills itself
+with placeholder models.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -721,9 +741,94 @@ park value.
 
 ---
 
+## Step 7 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][AssetBuilder] Placeholders: 35 dino(s), 10 egg(s) built, 0 real asset(s) kept
+  ok      [R7] 35 species models and the wild egg resolve
+[SAD/S][NestService] Built hub and 4 zone(s) in N ms
+[SAD/S][NestService] Built 48 nest(s) from 48 anchor(s), 122 egg(s) available
+[SAD/S][NestService] Respawn ticking at 1 Hz
+```
+
+Rule 7 is no longer skipped — it now checks all 35 species models plus the
+generic wild egg.
+
+**2. Look at the world.** Walk out of your park toward the middle, then turn
+around. Four coloured zones sit on an outer ring, each with a **150-stud glowing
+gate** you can read from the plaza: JURASSIC PLAINS, ROCKY CANYON, SWAMP LANDS,
+FROZEN VALLEY. Roads run from each gate back toward the park ring.
+
+**3. Read a nest sign.** Walk into Jurassic Plains and find a nest — a sunken
+bowl with three pale eggs and a sign post. The sign shows:
+
+```
+JURASSIC PLAINS · NEST 4
+Guardian: Parasaurolophus        Risk: 💀
+TITAN      1 IN 100,000,000
+SECRET     1 IN 5,263,158
+LEGENDARY  1 IN 500
+```
+
+Those odds are read from the same weight table you will actually be rolled
+against. Walk to Frozen Valley and compare — Titan there is 1 in 2,000,000.
+
+**4. Take an egg.** Hold `E` on one for 0.6 seconds. It disappears. Nothing else
+happens yet — the rarity roll, the carry and the chase are Steps 8 and 9.
+
+**5. It comes back.** Wait 45 seconds in Jurassic Plains and the egg respawns
+with a working prompt. Frozen Valley takes 85.
+
+**6. Distance is checked server-side.** From the **client** console, try to take
+an egg from across the map:
+
+```lua
+local egg = workspace.SAD_Runtime.Nests:GetChildren()[1].Eggs:GetChildren()[1]
+egg.Shell.StealPrompt:InputHoldBegin()
+```
+
+Standing far away, nothing happens. The prompt enforces range on the *client*,
+which an exploiter simply removes; the server check in `ClaimEgg` is the copy
+that matters.
+
+**7. One egg, one claimant.** Server command bar:
+
+```lua
+local Nest = require(game.ServerScriptService.SAD_Server.Services.NestService)
+local p = game.Players:GetPlayers()[1]
+local nest = Nest.GetNestsInZone("plains")[1]
+print(Nest.ClaimEgg(p, nest.Id, 1))   --> true  nil   (if you are standing near it)
+print(Nest.ClaimEgg(p, nest.Id, 1))   --> false already taken
+```
+
+**8. Inspect the nests.**
+
+```lua
+local Nest = require(game.ServerScriptService.SAD_Server.Services.NestService)
+print("eggs available:", Nest.CountAvailableEggs())
+for _, n in Nest.GetNestsInZone("frozen") do
+    print(n.Id, n.GuardianSpeciesId, "risk", n.Risk)
+end
+```
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| `Egg_Wild is missing` | `AssetBuilder` not pasted, or Bootstrap not re-pasted |
+| `R7` failures | A species model name that does not resolve — usually a hand-added species without a matching asset |
+| Zones overlap the park ring | `ZoneConfig.RingRadius` lowered; the spec checks the clearance |
+| Nests stacked on each other | `NestCount` raised past what the spiral can space |
+| Eggs never respawn | The 1 Hz tick errored — check Output for `Respawn tick failed` |
+| Tags missing on a hand-built zone | `SAD_NestAnchor` must be on the anchor parts themselves; duplicating a tagged model in Studio drops the tag |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,468 assertions** without Studio:
+Syntax-checks every source file and runs **1,824 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -739,6 +844,7 @@ Fetches the Luau CLI on first run.
 | `tests/step4_spec.lua` | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
 | `tests/step5_spec.lua` | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, and design-token ordering |
 | `tests/step6_spec.lua` | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap, and the plot depth budget |
+| `tests/step7_spec.lua` | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection and risk ratings |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

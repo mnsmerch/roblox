@@ -22,11 +22,38 @@ local ZoneConfig = {}
 
 ZoneConfig.Order = { "plains", "canyon", "swamp", "frozen" }
 
+-- ── Ring geometry ───────────────────────────────────────────────────────────
+
+--[[
+	Ten slots are reserved even though V1 fills four, so zones 5-10 drop into
+	their eventual positions without moving anything a player has learned.
+	Landmarks and routes stay put across updates.
+
+	Slot 1 sits on +X and they run anticlockwise in zone order, so a player
+	physically walks further around the ring as they progress (docs/02 §1).
+]]
+ZoneConfig.SlotCount = 10
+ZoneConfig.ZoneSize = 350
+
+--[[
+	Derived clearance, not a chosen number. Parks occupy 573 +/- 60, so their
+	outer edge is 633; a zone's inner edge is RingRadius - ZoneSize/2. At 950
+	that leaves a 142-stud walk between the park ring and the nearest zone,
+	which is the "zone entrances are close" feel from the FTUE.
+]]
+ZoneConfig.RingRadius = 950
+
+ZoneConfig.HubRadius = 520
+ZoneConfig.GroundThickness = 4
+ZoneConfig.GateHeight = 150 -- docs/02 §1.2: visible from across the map
+ZoneConfig.RoadWidth = 40
+
 export type Zone = {
 	Id: string,
 	DisplayName: string,
 	Order: number,
 	Color: string,
+	RingSlot: number,
 	Unlock: { Fossils: number, Rebirths: number, IndexPercent: number, OwnRarity: string? },
 	NestCount: number,
 	EggsPerNest: number,
@@ -40,7 +67,7 @@ export type Zone = {
 
 ZoneConfig.Zones = {
 	plains = {
-		Id = "plains", DisplayName = "Jurassic Plains", Order = 1, Color = "7ED957",
+		Id = "plains", RingSlot = 1, DisplayName = "Jurassic Plains", Order = 1, Color = "7ED957",
 		Unlock = { Fossils = 0, Rebirths = 0, IndexPercent = 0, OwnRarity = nil },
 		NestCount = 14, EggsPerNest = 3, RespawnSecs = 45,
 		GuardiansPerNest = { min = 1, max = 1 },
@@ -50,7 +77,7 @@ ZoneConfig.Zones = {
 		Tagline = "Wide, green, forgiving. Everyone starts here.",
 	},
 	canyon = {
-		Id = "canyon", DisplayName = "Rocky Canyon", Order = 2, Color = "C98A4B",
+		Id = "canyon", RingSlot = 2, DisplayName = "Rocky Canyon", Order = 2, Color = "C98A4B",
 		Unlock = { Fossils = 5000, Rebirths = 0, IndexPercent = 0, OwnRarity = nil },
 		NestCount = 12, EggsPerNest = 3, RespawnSecs = 55,
 		GuardiansPerNest = { min = 1, max = 1 },
@@ -60,7 +87,7 @@ ZoneConfig.Zones = {
 		Tagline = "Narrow ledges. Falling rocks knock the egg loose.",
 	},
 	swamp = {
-		Id = "swamp", DisplayName = "Swamp Lands", Order = 3, Color = "4C7A5A",
+		Id = "swamp", RingSlot = 3, DisplayName = "Swamp Lands", Order = 3, Color = "4C7A5A",
 		Unlock = { Fossils = 45000, Rebirths = 0, IndexPercent = 0, OwnRarity = nil },
 		NestCount = 12, EggsPerNest = 2, RespawnSecs = 70,
 		GuardiansPerNest = { min = 1, max = 2 },
@@ -70,7 +97,7 @@ ZoneConfig.Zones = {
 		Tagline = "Mud slows you 35%. The bridges are the safe route.",
 	},
 	frozen = {
-		Id = "frozen", DisplayName = "Frozen Valley", Order = 4, Color = "8FD9F5",
+		Id = "frozen", RingSlot = 4, DisplayName = "Frozen Valley", Order = 4, Color = "8FD9F5",
 		Unlock = { Fossils = 400000, Rebirths = 0, IndexPercent = 0, OwnRarity = nil },
 		NestCount = 10, EggsPerNest = 2, RespawnSecs = 85,
 		GuardiansPerNest = { min = 1, max = 2 },
@@ -83,12 +110,12 @@ ZoneConfig.Zones = {
 	--[[
 		V1.1+ zones, with their gates from docs/02 §2.1 preserved:
 
-		volcano   3,500,000     R1              V1.1
-		jungle    28,000,000    R2              V1.4
-		ruins     220,000,000   R4  index 25%   V1.4
-		wasteland 1,800,000,000 R6  index 40%   V1.6
-		sky       15e9          R9  index 55%  own a Mythic   V2.0
-		titan     140e9         R13 index 70%  own an Ancient V2.0
+		slot 5   volcano   3,500,000     R1              V1.1
+		slot 6   jungle    28,000,000    R2              V1.4
+		slot 7   ruins     220,000,000   R4  index 25%   V1.4
+		slot 8   wasteland 1,800,000,000 R6  index 40%   V1.6
+		slot 9   sky       15e9          R9  index 55%  own a Mythic   V2.0
+		slot 10  titan     140e9         R13 index 70%  own an Ancient V2.0
 	]]
 }
 
@@ -111,6 +138,93 @@ function ZoneConfig.NextLocked(unlocked: { [string]: boolean }): Zone?
 		end
 	end
 	return nil
+end
+
+--[[
+	Zone origin on the ring. Local +Z faces the hub, matching plots exactly.
+
+	CFrame.LookVector is the CFrame's local -Z, so the LookVector aims OUTWARD
+	for +Z to point at the hub - the same trap that had every park gate facing
+	backwards before it was caught.
+]]
+function ZoneConfig.OriginOf(zoneId: string): CFrame?
+	local zone = (ZoneConfig.Zones :: any)[zoneId]
+	if not zone then
+		return nil
+	end
+
+	local angle = (zone.RingSlot - 1) / ZoneConfig.SlotCount * math.pi * 2
+	local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
+	local position = outward * ZoneConfig.RingRadius
+
+	return CFrame.lookAt(position, position + outward, Vector3.yAxis)
+end
+
+--[[
+	Nest positions inside a zone, in zone-local space.
+
+	A sunflower (golden-angle) spiral: deterministic, so a nest is in the same
+	place every session and players learn the map, and evenly spread without the
+	clustering that random scatter produces. No seeds, no tuning, no two nests
+	on top of each other.
+]]
+function ZoneConfig.NestOffsets(zoneId: string): { Vector3 }
+	local zone = (ZoneConfig.Zones :: any)[zoneId]
+	if not zone then
+		return {}
+	end
+
+	local count = zone.NestCount
+	local usable = ZoneConfig.ZoneSize * 0.40 -- keep clear of the walls
+	local goldenAngle = math.pi * (3 - math.sqrt(5))
+
+	local offsets = {}
+	for index = 1, count do
+		local radius = usable * math.sqrt((index - 0.5) / count)
+		local theta = index * goldenAngle
+		table.insert(offsets, Vector3.new(math.cos(theta) * radius, 0, math.sin(theta) * radius))
+	end
+	return offsets
+end
+
+--- Smallest gap between any two nests in a zone. Asserted by the spec so a
+--- NestCount change cannot quietly stack two nests on each other.
+function ZoneConfig.MinNestSeparation(zoneId: string): number
+	local offsets = ZoneConfig.NestOffsets(zoneId)
+	local smallest = math.huge
+
+	for i = 1, #offsets do
+		for j = i + 1, #offsets do
+			local delta = offsets[i] - offsets[j]
+			local distance = math.sqrt(delta.X * delta.X + delta.Z * delta.Z)
+			if distance < smallest then
+				smallest = distance
+			end
+		end
+	end
+	return smallest
+end
+
+--- The three rarest tiers a zone can actually roll, for its nest sign. This is
+--- the "1 IN 100,000,000" line players screenshot.
+function ZoneConfig.HeadlineRarities(zoneId: string, rarityConfig, limit: number?): { string }
+	local weights = rarityConfig.ZoneWeights[zoneId]
+	if not weights then
+		return {}
+	end
+
+	local reachable = {}
+	for _, rarityId in rarityConfig.Order do
+		if (weights[rarityId] or 0) > 0 then
+			table.insert(reachable, rarityId)
+		end
+	end
+
+	local headline = {}
+	for index = #reachable, math.max(1, #reachable - (limit or 3) + 1), -1 do
+		table.insert(headline, reachable[index])
+	end
+	return headline
 end
 
 function ZoneConfig.GetColor(zoneId: string): Color3
