@@ -83,6 +83,25 @@ The only element that changes. States:
 
 ## 4. Platform specifics
 
+### The touch-target guarantee (structural, not aspirational)
+
+`Theme.ScaleFor` derives its lower clamp from `MinTouchTarget /
+BottomButtonHeight` rather than from a hand-picked number or a device check. At
+any scale at or above that floor, a bottom-bar button is at least **64 real
+pixels** tall — on every viewport, including ones nobody thought to test.
+`tests/step5_spec.lua` asserts it across twelve real device resolutions from a
+480×270 window to 4K.
+
+The consequence is deliberate: on a very small screen the UI is *larger*
+relative to the screen. There is less to show and every target still has to be
+thumb-sized.
+
+Breakpoints are named for available **room** (`compact` / `medium` / `wide`),
+not device class, and are measured in logical pixels (viewport ÷ scale). Two
+viewports with the same room get the same layout — that is what responsive
+means, and naming them "phone" and "tablet" would invite device-sniffing, which
+is how UI ends up wrong on the one configuration nobody tested.
+
 ### Mobile (primary target)
 
 - Bottom bar buttons ≥ 64×64 px with ≥ 8 px gaps.

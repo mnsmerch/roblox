@@ -84,6 +84,10 @@ StarterPlayer
 └── StarterPlayerScripts
     └── SAD_Client                   (Folder)
         ├── Bootstrap                (LocalScript)   the ONLY LocalScript
+        ├── UI                       (Folder)
+        │   ├── Theme                (ModuleScript)  design tokens + layout rules
+        │   ├── Create               (ModuleScript)  declarative Instance builder
+        │   └── Widgets              (ModuleScript)  reusable UI pieces
         └── Controllers              (Folder of ModuleScripts)
             ├── StateController      mirrors the replicated profile
             ├── UIController         mounts/unmounts screens
@@ -103,9 +107,19 @@ StarterPlayer
             ├── TutorialController
             └── SettingsController
 
-StarterGui
-└── SAD_UI                           (ScreenGui, ResetOnSpawn = false, IgnoreGuiInset = false)
-    └── (all screens, initially Visible = false)
+(StarterGui is empty. SAD_UI is CREATED AT RUNTIME by UIController into
+ PlayerGui - the interface is built in code so it stays in version control and
+ diffable, and a PlayerGui-parented ScreenGui survives respawn inherently, with
+ no ResetOnSpawn property left to get wrong.)
+
+PlayerGui                            (at runtime)
+└── SAD_UI                           (ScreenGui)
+    └── Root                         (Frame, holds the single UIScale)
+        ├── HudLayer                 (ZIndex 10)
+        ├── ScreenLayer              (ZIndex 20)
+        ├── PromptLayer              (ZIndex 30)
+        ├── NotificationLayer        (ZIndex 40)
+        └── TakeoverLayer            (ZIndex 50)
 
 Workspace
 ├── SAD_World                        (Folder)

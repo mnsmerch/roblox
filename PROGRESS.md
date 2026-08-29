@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 4 of 24 complete.** Awaiting the Studio Play test before Step 5.
+## Status: **Step 5 of 24 complete.** Awaiting the Studio Play test before Step 6.
 
 ## Completed
 
@@ -15,6 +15,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 3** — config modules & ConfigValidator | All V1 content data, 800 more assertions |
 | 2026-08-29 | Glitch Compsognathus added (species #35) | The any-zone Secret; approved as V1 scope |
 | 2026-08-29 | **Step 4** — state replication | Shared `Patch` module, allowlist boundary, 183 more assertions |
+| 2026-08-29 | **Step 5** — HUD skeleton | UI built in code, 96 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -24,7 +25,7 @@ accident. Updated at the end of every build step.
 | 2 | DataService & PlayerDataService | ✅ **done** |
 | 3 | Config modules & ConfigValidator | ✅ **done** |
 | 4 | State replication | ✅ **done** |
-| 5 | HUD skeleton | ⬜ |
+| 5 | HUD skeleton | ✅ **done** |
 | 6 | Park plots | ⬜ |
 | 7 | Nests & the world | ⬜ |
 | 8 | Egg pickup & carrying | ⬜ |
@@ -119,11 +120,40 @@ when unsure what changed — it marks everything dirty, costing one wider diff
 rather than a desynced client). A write that bypasses both is a write the
 client never hears about; there is no polling fallback by design.
 
+### StarterPlayerScripts/SAD_Client/UI
+
+| Object | Type | Purpose |
+|---|---|---|
+| `Theme` | ModuleScript | Design tokens **and** the pure scale/breakpoint functions |
+| `Create` | ModuleScript | Declarative `Instance.new` wrapper; parents last |
+| `Widgets` | ModuleScript | Panel, BottomButton, RailButton, Chip, ActionPrompt, Layout, SetNumber |
+
 ### StarterPlayerScripts/SAD_Client/Controllers
 
 | Object | Type | Purpose |
 |---|---|---|
 | `StateController` | ModuleScript | The client's mirror of its own profile slice |
+| `UIController` | ModuleScript | Owns `SAD_UI`, the 5 layers, scaling, one-screen-at-a-time |
+| `HUDController` | ModuleScript | Top bar, rails, bottom bar, action prompt; binds via Observe |
+| `InputController` | ModuleScript | Keyboard/gamepad/touch → named actions |
+
+```
+UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
+UIController.Register(name, screen) / Open / Close / Toggle / CloseAll / GetOpen
+UIController.Breakpoint  -> "compact"|"medium"|"wide"
+UIController.BreakpointChanged  Signal(breakpoint, logicalWidth)
+
+HUDController.SetAction(text?, progress?)
+HUDController.SetChaseMode(active)
+HUDController.SetCompass(text?)
+HUDController.SetEventBanner(text?)
+
+InputController.Action   Signal(action, state, inputObject?)
+InputController.Fire(action, state?)     -- HUD buttons route through here
+InputController.DeviceKind -> "Touch"|"Keyboard"|"Gamepad"|"Console"
+```
+
+`SAD_UI` is created at **runtime into PlayerGui**, not placed in StarterGui.
 
 ```
 StateController.Get() -> state
@@ -160,11 +190,14 @@ current value, then on every change at or under that path. No polling anywhere.
 | 9 | Dino Storage maxes at **205**, not 200 | 25 base + 12 levels × 15 = 205. The docs' endpoint and its own level maths disagreed | docs/05 §5, docs/06 §1 |
 | 10 | Added `Patch` as shared module #9; diff/apply is shared code, not written twice | The delta producer and consumer must agree exactly. Separate implementations let them disagree — a numeric key stringified on one side, a removal mishandled on the other — and desync an inventory in a way that reads as a gameplay bug | docs/09 §1, §4 |
 | 11 | `StateDelta` carries an **array** of patches, not one `{path, value}` | One packet per flush instead of one per changed field. A realistic gameplay tick produces 10 patches | docs/09 §3.2 |
+| 12 | Added `SAD_Client/UI/` (Theme, Create, Widgets) beside `Controllers` | Forty `Instance.new` calls inline in a controller is unreadable, and three controllers sharing a button style needs one place to define it | docs/09 §1 |
+| 13 | `SAD_UI` is created at runtime in `PlayerGui`, not placed in `StarterGui` | The UI is built in code, so there is nothing to place. A PlayerGui-parented ScreenGui survives respawn inherently — no `ResetOnSpawn` left to get wrong | docs/09 §1 |
+| 14 | Breakpoints renamed `phone/tablet/desktop` → `compact/medium/wide` | They measure available room, not device class. Device names invite device-sniffing, which is how UI ends up wrong on the one configuration nobody tested | docs/08 §4 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 26 source files and runs **1,230
-assertions** outside Roblox. Last run: **1,230 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 32 source files and runs **1,326
+assertions** outside Roblox. Last run: **1,326 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -172,6 +205,7 @@ assertions** outside Roblox. Last run: **1,230 passed, 0 failed.**
 | `step2_spec` (150) | Template drift, migration chain + failure modes, full load path |
 | `step3_spec` (731) | Every content number against the design docs, the full coverage matrix, and 18 deliberately broken configs the validator must reject |
 | `step4_spec` (183) | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
+| `step5_spec` (96) | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, design-token ordering |
 
 Bugs the specs caught before they shipped:
 
@@ -191,6 +225,12 @@ Bugs the specs caught before they shipped:
 4. `Replication.Flush` called `require(script.Parent)` inside the 5 Hz loop.
    Safe, but a require in a hot path; hoisted into `Init`, where the parent has
    provably finished loading.
+5. The first HUD scale pass applied its touch-target floor only below a 700px
+   width, so an iPhone 14 in landscape (844px) fell past it and would have got
+   61px buttons — under the documented 64px minimum. The floor is now derived
+   from `MinTouchTarget / BottomButtonHeight` and applies universally, making
+   the guarantee structural rather than dependent on a device check being
+   right. Asserted across 12 real viewports.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

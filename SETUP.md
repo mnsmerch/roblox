@@ -212,6 +212,40 @@ the same shape as `DataService`. In Studio, add a ModuleScript named
 
 ---
 
+## Step 5 — the HUD
+
+A new `UI` folder under `SAD_Client`, sibling to `Controllers`:
+
+```
+StarterPlayerScripts
+└── SAD_Client
+    ├── Bootstrap        (LocalScript)
+    ├── UI               (Folder)          ← new
+    │   ├── Theme        (ModuleScript)
+    │   ├── Create       (ModuleScript)
+    │   └── Widgets      (ModuleScript)
+    └── Controllers      (Folder)
+        ├── StateController
+        ├── UIController      ← new
+        ├── HUDController     ← new
+        └── InputController   ← new
+```
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Client/UI/Theme` | `src/.../SAD_Client/UI/Theme.lua` |
+| `SAD_Client/UI/Create` | `src/.../SAD_Client/UI/Create.lua` |
+| `SAD_Client/UI/Widgets` | `src/.../SAD_Client/UI/Widgets.lua` |
+| `SAD_Client/Controllers/UIController` | `src/.../Controllers/UIController.lua` |
+| `SAD_Client/Controllers/HUDController` | `src/.../Controllers/HUDController.lua` |
+| `SAD_Client/Controllers/InputController` | `src/.../Controllers/InputController.lua` |
+
+**Nothing goes in StarterGui.** `SAD_UI` is created at runtime into `PlayerGui`
+by `UIController`. `Bootstrap` is unchanged — all three controllers are already
+in `CONTROLLER_ORDER`.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -483,9 +517,103 @@ setting path cannot be used to write currency.
 
 ---
 
+## Step 5 test
+
+**1. Boot.** Play. Expect:
+
+```
+[SAD/C][UIController] SAD_UI mounted with 5 layers
+[SAD/C][InputController] 11 action(s) bound
+[SAD/C][HUDController] HUD built
+[SAD/C][HUDController] HUD live
+[SAD/C][Boot] Loaded 4 controller(s): StateController, UIController, HUDController, InputController
+```
+
+On screen: a Fossils chip top-left, five buttons along the bottom, four icons
+down each side. **DNA, the rebirth badge and the shield timer are absent** —
+that is progressive disclosure working, not a bug.
+
+**2. The counter is live and animates.** Server command bar:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+PDS.UpdateKeys(p, { "Fossils" }, function(d) d.Fossils = 1234567 end, "test")
+```
+
+The chip should count *up* to `1.23M` over about half a second rather than
+snapping. Then reveal the hidden chips:
+
+```lua
+PDS.Update(p, function(d)
+    d.DNA = 250
+    d.Rebirths = 7
+    d.ShieldUntil = os.time() + 90
+end, "test")
+```
+
+DNA and `R7` appear; the shield chip appears and counts down `01:30 → 00:00`,
+then hides itself.
+
+**3. Responsive layout.** Drag the Studio viewport narrow and watch the left
+rail fold into a `☰` button, and the right rail disappear entirely. Widen it
+and both come back. The Output logs each transition:
+
+```
+[SAD/C][UIController] Breakpoint compact (792 logical px, scale 0.84)
+```
+
+**4. The accessibility scale.** Client console:
+
+```lua
+game.ReplicatedStorage.SAD_Net.Events.RequestSetSetting:FireServer("UiScale", 130)
+```
+
+The whole HUD grows. Try `80`, then `9999` (clamps to 130), then `"big"`
+(dropped — wrong type).
+
+**5. Input parity.** Press `1` through `5`. Each should behave exactly as
+tapping the matching bottom-bar button, because both route through
+`InputController.Fire`. Nothing opens yet — the screens arrive in Step 13 — so
+watch for the warning that proves the wiring:
+
+```
+[SAD/C][UIController] No screen registered as 'ToggleShop' - not built yet?
+```
+
+**6. The action prompt.** Client console:
+
+```lua
+local H = require(game.Players.LocalPlayer.PlayerScripts.SAD_Client.Controllers.HUDController)
+H.SetAction("HOLD TO STEAL", 0.62)   -- appears with a 62% fill
+task.wait(2)
+H.SetChaseMode(true)                 -- bottom bar and rails vanish
+task.wait(2)
+H.SetChaseMode(false)
+H.SetAction(nil)
+```
+
+Step 8 drives this for egg pickup and Step 9 for chases; it exists now so those
+steps add behaviour rather than layout.
+
+**7. Survives respawn.** Reset your character. The HUD must stay — that is the
+whole reason `SAD_UI` lives in `PlayerGui` rather than `StarterGui`.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| No HUD at all | `UI` folder is inside `Controllers` instead of beside it |
+| `unknown layer 'hud'` | `Theme` pasted into the wrong object |
+| Buttons look tiny on a phone | Something overrode `Theme.ScaleFor` — the floor is derived, not hand-set |
+| HUD vanishes on respawn | `SAD_UI` was hand-created in StarterGui as well; delete it |
+| Emoji render as boxes | Expected on some platforms — Step 24 swaps in real icon assets |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,230 assertions** without Studio:
+Syntax-checks every source file and runs **1,326 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -499,6 +627,7 @@ Fetches the Luau CLI on first run.
 | `tests/step2_spec.lua` | `ProfileTemplate` drift, the migration chain and its failure modes, and the full migrate → reconcile → write-in-place load path against a realistic old save |
 | `tests/step3_spec.lua` | Every content number against the design docs, the full zone × rarity coverage matrix, and 18 deliberately broken configs the validator must reject |
 | `tests/step4_spec.lua` | The `Patch` round-trip property across 13 state transitions, depth limits, native key types, the replication allowlist against the real schema, and the settings schema |
+| `tests/step5_spec.lua` | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, and design-token ordering |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.
