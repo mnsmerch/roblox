@@ -106,7 +106,7 @@ figures. Growth is deliberately varied so the "best next buy" changes over time.
 | **Strong Back** (carry) | 10 | 5,000 | 1.95 | −6 % carry penalty | −60 % |
 | **Egg Pouch** (capacity) | 4 (1→5) | 9,000 | 3.40 | +1 carried egg | 5 |
 | **Bank Size** | 10 | 3,000 | 1.75 | +0.5 min of storage | 6 min |
-| **Dino Storage** | 12 (25→200) | 4,500 | 1.80 | +15 storage | 200 |
+| **Dino Storage** | 12 (25→205) | 4,500 | 1.80 | +15 storage | 205 |
 | **Nest Radar** | 8 | 12,000 | 2.05 | +18 studs egg-detection ring on minimap | +144 studs |
 | **Fence** | 5 | 15,000 | 2.80 | +1.0 s raid time | +5 s |
 | **Guard Tower** | 5 | 60,000 | 3.10 | −4 s tag cooldown | 25 s → 5 s |

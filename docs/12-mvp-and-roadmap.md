@@ -16,7 +16,8 @@ scream at their screen in the first hour?"* If no, it's cut from V1.
 ### IN
 
 **Core loop (complete)**
-- Player park with 8 placement slots, 2 incubators, 1 Vault Pedestal
+- Player park starting at 4 placement slots (upgradeable to 30), 2 incubators,
+  1 Vault Pedestal
 - Wild egg stealing with the full pickup → rarity roll → carry → chase → deposit
   → incubate → hatch → place → income cycle
 - Guardian chase AI with **8 archetypes** (Grazer, Skitterer, Sprinter, Charger,

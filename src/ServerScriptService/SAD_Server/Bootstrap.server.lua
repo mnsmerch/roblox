@@ -9,9 +9,10 @@
 	Boot sequence:
 	  1. Wait for shared modules to replicate.
 	  2. Net.Init() - publishes ReplicatedStorage/SAD_Net so clients can connect.
-	  3. Require every service in SERVICE_ORDER that actually exists on disk.
-	  4. Init(app) on all of them.
-	  5. Start(app) on all of them.
+	  3. ConfigValidator - refuse to start on broken content data.
+	  4. Require every service in SERVICE_ORDER that actually exists on disk.
+	  5. Init(app) on all of them.
+	  6. Start(app) on all of them.
 
 	Services not yet built are SKIPPED, not errors. That is what lets us add one
 	service per build step without touching this file - the order list is the
@@ -124,6 +125,32 @@ Log.banner(string.format("%s v%s starting", GameConfig.GameName, GameConfig.Vers
 
 -- Phase 0: publish the remote tree before any service tries to bind to it.
 Net.Init()
+
+--[[
+	Phase 0.5: validate content data.
+
+	Runs BEFORE services so a bad config is a boot error rather than a silent
+	gameplay bug. The failure this catches most often is a zone that can roll a
+	rarity it has no species for: nothing throws, the player just watches a
+	three-hour incubation finish and receive nothing.
+
+	Content errors abort the boot even when StrictBoot is off. A server that
+	cannot hatch what it rolls is worse than a server that does not start.
+]]
+do
+	local validator = require(Config:WaitForChild("ConfigValidator"))
+	local report = validator.RunDefault()
+
+	Log.banner("Config validation")
+	print(validator.Format(report))
+
+	if #report.errors > 0 then
+		error(string.format(
+			"[SAD] Boot aborted: %d content error(s). Fix the config, not the code.",
+			#report.errors
+		), 0)
+	end
+end
 
 -- Phase 1: require
 local skipped: { string } = {}

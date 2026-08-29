@@ -46,6 +46,16 @@ exactly the hook. Zone-10 Titan is **1 in 8,333**, a realistic endgame chase.
 Zones 2, 3, 4, 6, 7, 8, 9 interpolate between these; the full table lives in
 `RarityConfig.ZoneWeights` (see [11-content-config.md](11-content-config.md)).
 
+> **V1 shipping values differ from this table.** Version 1 ships no Mythic and
+> no Ancient species, so those tiers carry weight **0** in the live V1 vectors
+> and their mass is folded into Legendary. A non-zero weight for a tier with no
+> species to hatch is precisely what ConfigValidator rule 6 refuses to boot on.
+> The V1 numbers live in `RarityConfig.ZoneWeights`; the table above is the
+> design target that V1.1 and V1.3 restore as those species ship.
+>
+> V1 Zone 1: Common 62,000,000 · Uncommon 27,000,000 · Rare 9,000,000 ·
+> Epic 1,800,000 · Legendary 199,980 · Secret 19 · Titan 1.
+
 ### 1.2 Luck formula
 
 One player stat, `Luck` (a percentage, additive from all sources). It must not

@@ -172,6 +172,27 @@ Set it back to `false` before testing persistence, and never publish with it on.
 
 ---
 
+## Step 3 — config modules
+
+Seven new ModuleScripts, all under `ReplicatedStorage/SAD_Shared/Config`
+alongside the existing `GameConfig`:
+
+| Studio object | Source file |
+|---|---|
+| `Config/RarityConfig` | `src/.../Config/RarityConfig.lua` |
+| `Config/MutationConfig` | `src/.../Config/MutationConfig.lua` |
+| `Config/DinoConfig` | `src/.../Config/DinoConfig.lua` |
+| `Config/ZoneConfig` | `src/.../Config/ZoneConfig.lua` |
+| `Config/UpgradeConfig` | `src/.../Config/UpgradeConfig.lua` |
+| `Config/RebirthConfig` | `src/.../Config/RebirthConfig.lua` |
+| `Config/ConfigValidator` | `src/.../Config/ConfigValidator.lua` |
+
+`Bootstrap` also changed this step — re-paste
+`src/ServerScriptService/SAD_Server/Bootstrap.server.lua`. It now runs
+`ConfigValidator` before loading any service.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -278,9 +299,80 @@ or trust ProfileStore's own test suite for it.
 
 ---
 
+## Step 3 test
+
+Press **Play**. Between the remote tree and the service list you should now see:
+
+```
+[SAD/S] ======== Config validation ========
+  ok      [R1] 4 zone weight vector(s) sum to 100000000
+  ok      [R2] 9 shipped mutation(s) sum to 100000000
+  ok      [R3] 34 species reference known rarities
+  ok      [R4] all species zone references resolve
+  ok      [R5] zones, pools and weight vectors line up
+  ok      [R6] all 28 rollable zone x rarity combinations have species
+  ok      [R9] 14 upgrade track(s) validated
+  ok      [S] structural checks complete
+  skipped SAD_Assets (Step 7) - not built yet
+  skipped EventConfig (Step 18) - not built yet
+  skipped ProductConfig (Step 21) - not built yet
+  8 passed, 0 warning(s), 0 error(s), 3 skipped
+```
+
+**Zero errors is the pass condition.** Any error aborts the boot on purpose.
+
+### See the validator do its job
+
+Worth breaking once, so you recognise the failure when it happens for real.
+In `RarityConfig`, change Zone 1's `epic` weight from `1800000` to `1800001`
+and Play:
+
+```
+  ERROR   [R1] zone 'plains' weights sum to 100000001, expected 100000000 (off by 1)
+[SAD] Boot aborted: 1 content error(s). Fix the config, not the code.
+```
+
+Then try the important one. Put `mythic = 9500` back into Zone 1 (and drop
+`legendary` to `190480` so it still sums):
+
+```
+  ERROR   [R6] zone 'plains' rolls mythic at weight 9500 but has NO mythic
+          species (that tier ships after V1 - set its weight to 0 until then)
+```
+
+That is the bug this rule exists for. Without it the game boots happily, and
+one player in three weeks watches a 45-minute incubation finish and receive
+nothing. Undo both edits afterwards.
+
+### Inspect the content from the command bar
+
+```lua
+local C = game.ReplicatedStorage.SAD_Shared.Config
+local Dino = require(C.DinoConfig)
+local Rarity = require(C.RarityConfig)
+
+print("species:", Dino.Count())
+print("Zone 4 Legendaries:", table.concat(Dino.SpeciesFor("frozen", "legendary"), ", "))
+print("Zone 1 Titan odds: 1 in", 1e8 / Rarity.ZoneWeights.plains.titan)
+
+local trex = Dino.Get("trex")
+print(trex.DisplayName, "earns", Rarity.Tiers[trex.Rarity].BaseIncome * trex.SpeciesFactor, "F/s")
+```
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| `ConfigValidator` infinite yield | Not directly under `SAD_Shared/Config`, or misspelled |
+| `R6` errors after you add a dinosaur | Its rarity has no coverage in a zone that rolls it. Add a zone to the species, or zero that tier's weight |
+| `R1` errors after a weight edit | The vector no longer sums to 100,000,000. The tool is the point — adjust another tier to compensate |
+| `attempt to index nil with 'Species'` | A config was pasted into the wrong object name |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **233 assertions** without Studio:
+Syntax-checks every source file and runs **1,033 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -292,6 +384,7 @@ Fetches the Luau CLI on first run.
 |---|---|
 | `tests/step1_spec.lua` | `Format`, `TableUtil`, `RNG`, `Signal`, `Trove` |
 | `tests/step2_spec.lua` | `ProfileTemplate` drift, the migration chain and its failure modes, and the full migrate → reconcile → write-in-place load path against a realistic old save |
+| `tests/step3_spec.lua` | Every content number against the design docs, the full zone × rarity coverage matrix, and 18 deliberately broken configs the validator must reject |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

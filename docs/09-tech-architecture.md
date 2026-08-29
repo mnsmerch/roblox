@@ -28,7 +28,8 @@ ReplicatedStorage
     │   ├── QuestConfig              (ModuleScript)  daily + weekly pools
     │   ├── DailyConfig              (ModuleScript)  7-day + streak table
     │   ├── ProductConfig            (ModuleScript)  gamepass + dev product ids
-    │   └── IndexConfig              (ModuleScript)  milestone rewards
+    │   ├── IndexConfig              (ModuleScript)  milestone rewards
+    │   └── ConfigValidator          (ModuleScript)  boot-time content checks
     ├── Modules                      (Folder)
     │   ├── Types                    (ModuleScript)  Luau type exports
     │   ├── Log                      (ModuleScript)  scoped, level-filtered logging

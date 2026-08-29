@@ -112,12 +112,18 @@ ZoneConfig.Zones = {
         GuardiansPerNest = { min = 1, max = 1 },
         LuckBonus = 0.00,
         Hazards = {},                      -- e.g. { "mud", "ice", "lava" }
-        SpeciesPool = { "compsognathus","microraptor", ... },
         WorldModel = "Zone01",
         Music = "rbxassetid://0", Ambience = "rbxassetid://0",
     },
 }
 ```
+
+**There is deliberately no `SpeciesPool` here.** An earlier draft of this
+document put the species-to-zone relationship on *both* `DinoConfig.Zones` and
+`ZoneConfig.SpeciesPool`. Two tables describing one relationship drift apart the
+first time someone adds a dinosaur in a hurry, and the drift is silent.
+`DinoConfig.Zones` is authoritative; `DinoConfig.BuildZoneIndex()` derives the
+zone → rarity → species lookup once at boot and caches it.
 
 Nest anchors live in the world model as parts tagged `SAD_NestAnchor` with
 attributes `ZoneId` and `NestIndex`. `NestService` reads them with

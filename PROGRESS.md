@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 2 of 24 complete.** Awaiting the Studio Play test before Step 3.
+## Status: **Step 3 of 24 complete.** Awaiting the Studio Play test before Step 4.
 
 ## Completed
 
@@ -12,6 +12,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | Game Design Blueprint (docs 00–15) | Full design, economy, architecture, MVP, build order |
 | 2026-08-29 | **Step 1** — project skeleton & shared modules | 11 files, 83 offline assertions |
 | 2026-08-29 | **Step 2** — DataService & PlayerDataService | ProfileStore-backed persistence, 150 more assertions |
+| 2026-08-29 | **Step 3** — config modules & ConfigValidator | All V1 content data, 800 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -19,7 +20,7 @@ accident. Updated at the end of every build step.
 |---:|---|---|
 | 1 | Project skeleton & shared modules | ✅ **done** |
 | 2 | DataService & PlayerDataService | ✅ **done** |
-| 3 | Config modules & ConfigValidator | ⬜ |
+| 3 | Config modules & ConfigValidator | ✅ **done** |
 | 4 | State replication | ⬜ |
 | 5 | HUD skeleton | ⬜ |
 | 6 | Park plots | ⬜ |
@@ -51,6 +52,13 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | Object | Type | Purpose |
 |---|---|---|
 | `Config/GameConfig` | ModuleScript | Global constants only. Dependency-free |
+| `Config/RarityConfig` | ModuleScript | 9 tiers, 4 zone weight vectors, luck powers |
+| `Config/MutationConfig` | ModuleScript | 8 V1 mutations + none, Prime rule, weather modifiers |
+| `Config/DinoConfig` | ModuleScript | 34 V1 species. **Authoritative for species↔zone** |
+| `Config/ZoneConfig` | ModuleScript | Zones 1–4, unlock gates, nest parameters |
+| `Config/UpgradeConfig` | ModuleScript | 11 upgrade + 3 defence tracks, cost/effect curves |
+| `Config/RebirthConfig` | ModuleScript | Cost curve, preserved keys, permanent grants |
+| `Config/ConfigValidator` | ModuleScript | 10 content rules + 4 structural; aborts boot on error |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -119,16 +127,22 @@ write the client never hears about.
 | 2 | `Service.Init()` → `Service.Init(app)` | StealService↔ParkService need each other; direct requires in both directions deadlock. `app` injects `Get/Log/Net/Config` | docs/09 §2 |
 | 3 | Secret odds string `1 IN 5,263,157` → `1 IN 5,263,158` | `Format.Odds` rounds 100,000,000/19 to nearest. The doc example now matches what the code prints | docs/04 §4 |
 | 4 | Save-failure handling: "retry 5× with backoff" → a `SaveStalled` signal | ProfileStore retries writes internally; a manual retry loop on top would fight it. A single failure is not observable — a long silence is, and that is the signal that matters | docs/09 §5 |
+| 5 | **Removed `ZoneConfig.SpeciesPool`.** `DinoConfig.Zones` is the single source of truth; `BuildZoneIndex()` derives the pools at boot | Two tables describing one relationship drift apart the first time someone adds a dinosaur in a hurry, and the drift is silent | docs/11 §4 |
+| 6 | V1 zone weight vectors carry **0** for Mythic and Ancient, folded into Legendary | V1 ships no species in those tiers. Non-zero weight for an unhatchable tier is exactly what validator rule 6 refuses to boot on. Design targets restored in V1.1/V1.3 | docs/01 §1.1 |
+| 7 | Several species placed in earlier zones than docs/01 assigns (marked `V1_PLACEMENT`) | docs/01 assigns zones assuming all ten exist. With four, a Legendary has to be reachable somewhere or Zone 4's Legendary weight rolls a rarity that cannot hatch | docs/01 §3 |
+| 8 | Park starts at **4** placement slots, not 8 | docs/12 said 8, docs/05's upgrade track said 4→30. Resolved to the economy model, which the whole cost curve is built on | docs/12 §2 |
+| 9 | Dino Storage maxes at **205**, not 200 | 25 base + 12 levels × 15 = 205. The docs' endpoint and its own level maths disagreed | docs/05 §5, docs/06 §1 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 15 source files and runs **233 assertions**
-outside Roblox. Last run: **233 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 22 source files and runs **1,033
+assertions** outside Roblox. Last run: **1,033 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
 | `step1_spec` (83) | `Format`, `TableUtil`, `RNG`, `Signal`, `Trove` |
 | `step2_spec` (150) | Template drift, migration chain + failure modes, full load path |
+| `step3_spec` (800) | Every content number against the design docs, the full 28-combination coverage matrix, and 18 deliberately broken configs the validator must reject |
 
 Bugs the specs caught before they shipped:
 
@@ -140,6 +154,11 @@ Bugs the specs caught before they shipped:
    undefined on a table with a hole, so adding migration 3 while forgetting 2
    would report a silently wrong version. Replaced with an explicit contiguous
    walk plus `Migrations.Validate()`, which `DataService` asserts at boot.
+3. Validator rule 6 fired immediately on the first V1 content pass, exactly as
+   predicted in the blueprint: every zone carried Mythic and Ancient weight
+   while V1 ships no species in those tiers, and Zone 1 rolled Epic and
+   Legendary with nothing in range to hatch. Resolved by deviations #6 and #7
+   rather than by weakening the rule.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

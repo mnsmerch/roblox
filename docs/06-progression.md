@@ -20,7 +20,7 @@ most common "I misclicked and sold my Titan" support ticket.
 
 **Favorite** is separate from Lock — it's a sort pin only.
 
-**Storage.** 25 unplaced dinosaurs base → 200 via the Dino Storage track. At
+**Storage.** 25 unplaced dinosaurs base → 205 via the Dino Storage track. At
 90 % full the HUD shows a persistent warning and the Sell screen offers a
 "Sell all Commons below Star 2" bulk action (with a confirm and a preview of
 exactly what will be sold). **Nothing is ever auto-deleted.** If storage is
