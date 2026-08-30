@@ -84,8 +84,35 @@ app = {
 
 --- A failed controller must never black-screen the player, so the client only
 --- aborts under StrictBoot (Studio). In production it degrades and reports.
+--[[
+	═══ A YIELD IN ONE Start DELAYS EVERY Start AFTER IT ═══════════════════════
+	The phases below run in sequence, deliberately: Init before Start means a
+	service can reach any other, and order means a dependency is ready before
+	its dependent. But sequence also means one slow Start holds up the rest.
+
+	The first Studio session boot took 530 ms, of which 502 was
+	`MessagingService:SubscribeAsync` inside `BroadcastService.Start` - a
+	yielding web call, with eighteen services queued behind it starting in 7 ms
+	once it returned. Finding that needed arithmetic on log timestamps.
+
+	So each phase is timed and anything over the threshold says so, by name.
+	The next yielding call in a Start announces itself.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+local SLOW_PHASE_MS = 50
+
 local function guarded(phase: string, name: string, fn: () -> ()): boolean
+	local startedAt = os.clock()
 	local ok, err = pcall(fn)
+	local elapsedMs = (os.clock() - startedAt) * 1000
+
+	if elapsedMs > SLOW_PHASE_MS then
+		Log.warn("Boot",
+			"%s took %.0f ms in %s - everything after it waited. "
+				.. "A yielding call belongs on its own thread",
+			name, elapsedMs, phase)
+	end
+
 	if ok then
 		return true
 	end

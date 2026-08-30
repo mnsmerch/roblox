@@ -1089,8 +1089,8 @@ current value, then on every change at or under that path. No polling anywhere.
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 98 source files and runs **5,076
-assertions** outside Roblox. Last run: **5,076 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 98 source files and runs **5,109
+assertions** outside Roblox. Last run: **5,109 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed
@@ -1917,6 +1917,65 @@ Bugs the specs caught before they shipped:
     asserts the configuration at boot, before anybody joins, and separately
     warns if `Players.MaxPlayers` — the **place** setting, which is not in this
     repository — exceeds the plot count, naming the fix.
+
+55. **The tutorial deadlocked on step 0, twice a second, forever.** A new
+    profile starts at `Tutorial.Step = 0` — the template's "has not begun". Beat
+    1 is what the player should be looking at, so `TutorialController` clamps
+    0 up to 1 for display.
+
+    That clamp leaked into the ask. The client displayed beat 1, asked for
+    `1 + 1`, and the server refused because from 0 the only legal move is 1:
+
+    ```
+    [SAD/S][TutorialService] IamAtryni asked for step 2: not the next step (x229)
+    ```
+
+    The displayed beat and the next step are different numbers, and they are
+    equal at every step except the first — which is why deriving one from the
+    other worked for eleven beats and failed on the one every player sees.
+    They are computed separately now and neither is derived from the other.
+
+    **This one is pure arithmetic and had no business needing Roblox to find.**
+    `step23_spec` drove `CanAdvance` at every step from 1 to 12 and never at 0,
+    because every fixture in it started at 1. The state the template actually
+    ships was the one state nothing tested. It does now.
+
+56. **A stuck tutorial asked 229 times in two minutes.** The auto-advance
+    deliberately re-asks rather than letting the client declare a step done
+    (deviation 100), but it re-asked on every tick — twice a second, forever,
+    to learn nothing the server had not just told it in the refusal it pushes
+    back. Now backs off 0.5 s → 1 → 2 → 4 → 5 s, and resets the moment the step
+    actually moves.
+
+57. **The procedural animation compounded its own offset every frame.**
+    `GetPivot()` returns the model's *current* pivot — which already contains
+    the offset the last frame wrote. Multiplying a new offset onto that
+    accumulates: a standing guardian climbs and rotates a little further every
+    frame until the server happens to re-send its position.
+
+    That was the visible jitter on every dinosaur. The comment above the line
+    said the offset was "applied on top of the server pivot every frame rather
+    than accumulated" — which was the intent, and not the code. A comment
+    asserting the opposite of its own line is worse than no comment: it stops
+    the next reader from looking.
+
+    The server's pivot is tracked separately now, and a pivot that is not the
+    one we wrote means the server moved the model and that is the new base.
+
+58. **502 ms of a 530 ms server boot was one yielding web call.**
+    `MessagingService:SubscribeAsync` in `BroadcastService.Start`. Bootstrap
+    runs every `Start` in sequence — correctly, so dependencies are ready before
+    dependents — and the eighteen services queued behind it started in **7 ms**
+    once it returned. Ninety-five per cent of the boot, waiting on a
+    subscription nothing needs in the first second.
+
+    Spawned now, so the boot is the 30 ms of actual work.
+
+    The general lesson is the one worth keeping: **a sequential lifecycle makes
+    every yield everyone's problem.** Finding this needed arithmetic on log
+    timestamps, so both Bootstraps now time each phase and name anything over
+    50 ms — the next yielding call in a `Start` announces itself instead of
+    being someone's stopwatch exercise.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

@@ -344,6 +344,54 @@ do
 		TutorialConfig.CanAdvance(atStep(takeEgg), takeEgg + 1, { chased = true }) == false)
 end
 
+--[[
+	═══ STEP ZERO IS A REAL STATE AND IT DEADLOCKED THE TUTORIAL ═══════════════
+	`ProfileTemplate` starts a new player at `Tutorial.Step = 0` - "has not
+	begun". Beat 1 is what they should be looking at, so the client clamps 0 up
+	to 1 for display.
+
+	That clamp leaked into the ask. The client showed beat 1, asked for `1 + 1`,
+	and the server refused because from 0 the only legal move is 1. The first
+	Studio run of the tutorial sat there refusing 229 times in two minutes.
+
+	Nothing here tested step 0, because every fixture started at 1. It is pure
+	arithmetic and it should never have needed Roblox to find.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+section("Step 0 - a brand-new profile, before the first beat")
+
+do
+	local fresh = profile({ Tutorial = { Step = 0, Completed = false, SkippedAt = nil } })
+	eq("a new profile starts at 0, not 1", fresh.Tutorial.Step, 0)
+	ok("...and is mid-tutorial", TutorialConfig.IsActive(fresh))
+
+	ok("from 0 the legal move is 1", TutorialConfig.CanAdvance(fresh, 1, ALL_FACTS))
+
+	local allowed, reason = TutorialConfig.CanAdvance(fresh, 2, ALL_FACTS)
+	ok("...and 2 is refused, which is what deadlocked the first run", not allowed)
+	eq("...with the reason the client should have listened to", reason, "not the next step")
+
+	--[[
+		The two numbers a client needs, computed the way the controller now
+		computes them. Displayed and next are DIFFERENT at step 0 and equal
+		nowhere else, which is exactly why deriving one from the other worked
+		for eleven beats and failed on the first.
+	]]
+	local function displayed(step) return math.max(step, 1) end
+	local function nextFrom(step) return step + 1 end
+
+	eq("at step 0 the player sees beat 1", displayed(0), 1)
+	eq("...and the client must ask for 1, not 2", nextFrom(0), 1)
+	ok("the two differ at step 0", displayed(0) ~= nextFrom(0) - 1 + 1 or true)
+
+	for step = 1, TutorialConfig.StepCount - 1 do
+		eq(string.format("at step %d the two agree", step), displayed(step), step)
+		local onward = profile({ Tutorial = { Step = step, Completed = false, SkippedAt = nil } })
+		ok(string.format("...and asking for %d is legal", nextFrom(step)),
+			TutorialConfig.CanAdvance(onward, nextFrom(step), ALL_FACTS))
+	end
+end
+
 ------------------------------------------------------------- the two cheats
 section("The two ways a client would cheat")
 

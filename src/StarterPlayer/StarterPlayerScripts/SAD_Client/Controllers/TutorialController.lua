@@ -68,6 +68,8 @@ local arrowTarget: Vector3? = nil
 local enteredStepAt = 0
 local hintShown = false
 local askedFor = 0
+local lastAskAt = 0
+local askBackoff = 0.5
 local renderConn
 
 local ARROW_HEIGHT = 9
@@ -292,6 +294,29 @@ local function stepArrow(_dt: number)
 		* CFrame.Angles(math.pi, 0, 0)
 end
 
+--[[
+	═══ THE DISPLAYED BEAT AND THE NEXT STEP ARE DIFFERENT NUMBERS ═════════════
+	A new player's `Tutorial.Step` is 0 - the profile template's "has not
+	started". Beat 1 is what they should be LOOKING at, so the display clamps
+	0 up to 1.
+
+	That clamp used to leak into the ask, and the first Studio run of the
+	tutorial deadlocked on it: the client showed beat 1, asked for `1 + 1`, and
+	the server refused because from 0 the only legal move is 1. Forever, twice a
+	second, 229 refusals in two minutes.
+
+	So they are computed separately and neither is derived from the other. The
+	next step is always what the SERVER holds plus one.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+local function displayedStep(): number
+	return math.max((state and state.Step) or 0, 1)
+end
+
+local function nextStep(): number
+	return ((state and state.Step) or 0) + 1
+end
+
 -- ── Drawing ─────────────────────────────────────────────────────────────────
 
 local function hideAll()
@@ -314,7 +339,7 @@ local function draw()
 		return
 	end
 
-	local step = math.max(state.Step, 1)
+	local step = displayedStep()
 	local beat = TutorialConfig.Get(step)
 	if not beat then
 		hideAll()
@@ -440,7 +465,7 @@ local function tick()
 		return
 	end
 
-	local step = math.max(state.Step, 1)
+	local step = displayedStep()
 	local beat = TutorialConfig.Get(step)
 	if not beat then
 		return
@@ -468,8 +493,23 @@ local function tick()
 		a step done could declare the last one done.
 	]]
 	if elapsed > TutorialConfig.AutoAdvanceAfterSecs or looksDone(beat) then
-		askedFor = 0
-		ask(step + 1)
+		--[[
+			Re-asked on a BACKOFF rather than every tick. The server pushes the
+			state on every refusal, so a client that keeps asking twice a second
+			is generating traffic and log noise to learn nothing it was not just
+			told - 229 refusals in two minutes, in the first Studio run.
+
+			One ask, then one a second later, then every two, four, eight, up to
+			every five seconds. A player who does the thing advances on the next
+			ask either way; the difference is only what a stuck one costs.
+		]]
+		local sinceAsk = os.clock() - lastAskAt
+		if sinceAsk >= askBackoff then
+			lastAskAt = os.clock()
+			askBackoff = math.min(askBackoff * 2, 5)
+			askedFor = 0
+			ask(nextStep())
+		end
 	end
 end
 
@@ -580,6 +620,9 @@ function TutorialController.Start(_app)
 			enteredStepAt = os.clock()
 			hintShown = false
 			askedFor = 0
+			-- The backoff is about being stuck; moving means we are not.
+			lastAskAt = 0
+			askBackoff = 0.5
 		end
 
 		draw()

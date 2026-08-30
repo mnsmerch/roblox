@@ -184,6 +184,10 @@ function AnimationController.Register(model: Model, archetypeId: string?, gaitDr
 		Speed = 0,
 		State = "Idle",
 		LastPosition = nil,
+		--- The pivot the SERVER last put this model at, and the one we last
+		--- wrote. See stepModel for why both are needed.
+		BasePivot = nil,
+		Applied = nil,
 		HoldClip = nil,
 		HoldUntil = 0,
 		LastAbilityAt = nil,
@@ -372,7 +376,27 @@ local function stepModel(entry, dt: number, cameraPosition: Vector3, maxDistance
 		return false
 	end
 
-	local pivot = model:GetPivot()
+	--[[
+		═══ THE SERVER'S PIVOT, NOT THE ONE WE LEFT BEHIND ═════════════════════
+		`GetPivot()` returns the model's CURRENT pivot - which already contains
+		the offset this function wrote last frame. Multiplying a new offset onto
+		that compounds it: a standing guardian climbs and rotates a little more
+		every frame until the server happens to re-send its position.
+
+		The first Studio run of this showed exactly that, as visible jitter on
+		every dinosaur in the park. The comment here used to claim the offset
+		was "applied on top of the server pivot every frame rather than
+		accumulated", which was the intent and not the code.
+
+		So the server's pivot is tracked separately. If the current pivot is not
+		the one we wrote, the server moved the model and that is the new base.
+		═══════════════════════════════════════════════════════════════════════
+	]]
+	local current = model:GetPivot()
+	if not entry.Applied or not current.Position:FuzzyEq(entry.Applied.Position, 0.001) then
+		entry.BasePivot = current
+	end
+	local pivot = entry.BasePivot or current
 	local position = pivot.Position
 
 	if (position - cameraPosition).Magnitude > maxDistance then
@@ -470,6 +494,17 @@ local function stepModel(entry, dt: number, cameraPosition: Vector3, maxDistance
 	end
 	local motion = motionName and AnimationConfig.Motions[motionName]
 	if not motion then
+		--[[
+			Nothing to play. Put the model back where the server has it rather
+			than leaving it wherever the last offset stopped - otherwise a
+			dinosaur that stops moving keeps whatever lean it had at the moment
+			its clip ended.
+		]]
+		if entry.Applied then
+			model:PivotTo(pivot)
+			entry.Applied = nil
+			entry.BasePivot = pivot
+		end
 		return false
 	end
 
@@ -493,11 +528,14 @@ local function stepModel(entry, dt: number, cameraPosition: Vector3, maxDistance
 	local roll = motion.Roll * style.LeanScale * intensity * wave
 
 	--[[
-		Applied on top of the server pivot every frame rather than accumulated,
+		Written from the SERVER pivot every frame, never from the last result,
 		so a dropped frame or a teleport cannot leave a model permanently
-		leaning. There is no state to drift.
+		leaning - and `Applied` is remembered so the next frame can tell our
+		offset apart from the server having moved the model.
 	]]
-	model:PivotTo(pivot * CFrame.new(0, lift, 0) * CFrame.Angles(pitch, 0, roll))
+	local applied = pivot * CFrame.new(0, lift, 0) * CFrame.Angles(pitch, 0, roll)
+	model:PivotTo(applied)
+	entry.Applied = applied
 	return true
 end
 
