@@ -5,7 +5,7 @@ accident. Updated at the end of every build step.
 
 ## Status: **All 24 build steps complete.** The V1 game is written.
 
-**It has never run in Roblox Studio.** Twenty-four steps of code and 4,766
+**It has never run in Roblox Studio.** Twenty-four steps of code and 5,095
 offline assertions, and not one Play test. That is the single most important
 thing on this page: everything below describes code that is *correct against
 its own specification*, not code that has been seen to work. SETUP.md has a
@@ -100,6 +100,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/LeaderboardConfig` | ModuleScript | 4 boards, the value ceiling, and the budget arithmetic that sets the schedule |
 | `Config/TutorialConfig` | ModuleScript | The 12 beats, the four bends, and the advance check — all pure |
 | `Config/AnalyticsConfig` | ModuleScript | docs/14's 46 events, the 3-field limit, sampling, and docs/12 §4's gates |
+| `Config/AnimationConfig` | ModuleScript | docs/15 §2's 29 clips, the procedural stand-ins, and 20 archetype characters |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -734,6 +735,58 @@ around your park, and a ring that spins does not teach that.
 60 Hz to be visible, and this is the controller most likely to be running on the
 weakest device in the game.
 
+### The animation pass (finding 46's other other half)
+
+```
+AnimationConfig.Clips / ClipOrder              -- docs/15 §2's 29 clips
+AnimationConfig.Motions                        -- the procedural stand-ins
+AnimationConfig.ArchetypeStyle / StyleFor(id)  -- 20 characters, one motion
+AnimationConfig.AbilityClip / WindupClip
+AnimationConfig.StateFor(speed, baseSpeed) -> "Idle"|"Walk"|"Run"
+
+AnimationController.Play(model, clipName, opts?) -> track?
+AnimationController.Stop(model, clipName?)
+AnimationController.Register(model, archetypeId?, gaitDriven?)
+AnimationController.Forget(model) / IsAvailable(clip) / Report()
+```
+
+**The models in this game cannot play animations, and that is the whole
+design.** `WildAIService`'s own header: guardians "are ANCHORED and moved by
+CFrame rather than driven by Humanoids. The placeholder models have no rig." An
+`Animation` needs an `Animator`, an `Animator` needs a `Humanoid` or
+`AnimationController`, and both need joints. `AssetBuilder` welds a head onto a
+block.
+
+So there are two paths, chosen by **asking the model** rather than by a flag:
+a rigged model gets its clip loaded by name from `SAD_Assets/Animations`; an
+unrigged one gets a small local CFrame offset on top of its server pivot. The
+second is what runs today, and every number in `Motions` is deliberately small
+because a stand-in that draws attention to itself is worse than stillness.
+
+**Gait is derived, not sent.** How fast a guardian is moving is measured on the
+client between frames. Its position is already replicated, so a "now I'm
+running" packet would be sending what the client can see — and a derived state
+cannot desync. The thresholds are fractions of `BaseWalkSpeed`, so they follow
+the game's speed instead of quietly stopping meaning anything.
+
+**One motion, twenty characters.** A Bulldozer lumbers and a Skitterer scurries
+through the same code path; the archetype scales rate, lift and lean. Measured
+spread: ×0.35 to ×3.00 on rate, ×0.35 to ×2.40 on lift. A Titan is the slowest
+and largest, deliberately — making the biggest thing in the game bob fastest
+reads as comic rather than as threatening.
+
+**docs/03 §1.2's wind-up tell finally exists.** It was a speed change and
+nothing else — a tell you feel a second late rather than one you see.
+`WildAIService` now stamps `Ability`, `WindupSecs` and `AbilityAt` on the
+guardian model as **attributes**, which replicate on their own: no remote, no
+entry in `Net`, and a client that ignores them is exactly as correct as one that
+reads them. See finding 48 for what writing that mapping from memory cost.
+
+**The player's character is registered but NOT gait-driven.** Roblox's default
+`Animate` script already plays its walk and run; deriving a second gait here
+would be two animations fighting for the same joints the day a `Walk` asset
+lands.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -861,6 +914,7 @@ client never hears about; there is no polling fallback by design.
 | `TutorialController` | ModuleScript | Professor Rok, one world arrow, one objective line, skip. **Asks; never decides** |
 | `SettingsController` | ModuleScript | Generated from `GameConfig.SettingsSchema`; owns Low Graphics |
 | `MinimapController` | ModuleScript | Derived geometry, no remote. **Shows no player the server had not already announced** |
+| `AnimationController` | ModuleScript | Real clips when a model has a rig, procedural CFrame motion when it does not |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -899,7 +953,7 @@ current value, then on every change at or under that path. No polling anywhere.
 |---|---|
 | `Bootstrap` | **LocalScript** — one of two LocalScripts in the project |
 | `DebugExploitClient` | **LocalScript**, `Disabled` — the exploit sweep. Studio-guarded; **delete before publishing** |
-| `Controllers` | Folder — **20** built; `AnimationController` is in the roster and still unwritten (see the gaps below) |
+| `Controllers` | Folder — all **21** in the roster are built |
 
 ## Declared deviations from the frozen contract
 
@@ -1023,11 +1077,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 116 | `ZoneConfig.ZoneAt` uses a 2D rotation, not `CFrame:PointToObjectSpace` | So it is pure and testable outside Roblox, which is the whole reason it moved into a config. The square is symmetric about both local axes, so which way round the rotation puts X and Z cannot change the answer — asserted at all four corners | — |
 | 117 | The minimap shows **no player the server had not already announced** | docs/03 builds the raid loop on incomplete information. A map with everyone on it deletes the chase. `MinimapController.SetThief` is the only way it learns a userId, `HUDController` is its only caller, and it is called only from a `StealAlert` the server sent | docs/03 §1, docs/08 §4 |
 | 118 | `HUDController` reaches `MinimapController` through a pcall'd `app.Get` | Every controller in this project has to survive one that is not built yet — the Bootstrap is designed around it. A missing minimap must cost a dot on a map, not a raid alert | docs/09 §1 |
+| 119 | Added `AnimationConfig` as config module #21 | docs/15 §2's clip list is content, and content in this project lives in a config where a spec can assert it against the document. `SoundController` keeps its slot table inline and is the outlier; the animation catalogue is three times the size and carries a fallback mapping that has to be checked | docs/09 §1, docs/15 §2 |
+| 120 | `AnimationController` picks its path by **asking the model**, not by a flag | A rigged Titan and an unrigged Compy can be on screen at once, and each should get the best motion it supports. A flag would be one more thing to remember to flip on the day the models change | docs/15 §2 |
+| 121 | Gait is derived from observed motion rather than sent | A guardian's position is already replicated, so a "now I'm running" packet would send what the client can already see — and a derived state cannot desync. Thresholds are fractions of `BaseWalkSpeed`, so they follow the game's speed | docs/09 §3 |
+| 122 | `WildAIService` stamps `Ability`, `WindupSecs` and `AbilityAt` as **attributes** | docs/03 §1.2's wind-up "tell" existed only as a speed change. Attributes replicate on their own, so the visual tell costs no remote and no entry in the frozen `Net` inventory, and a client that ignores them is exactly as correct | docs/03 §1.2 |
+| 123 | The player's character is registered but **not gait-driven** | Roblox's default `Animate` script already plays its walk and run. Deriving a second gait would be two animations fighting for the same joints the day a `Walk` asset lands — so the character gets docs/15's event clips and nothing else | docs/15 §2 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 96 source files and runs **4,766
-assertions** outside Roblox. Last run: **4,766 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 98 source files and runs **5,095
+assertions** outside Roblox. Last run: **5,095 passed, 0 failed.**
 
 **What these do and do not prove.** They prove the code is correct against its
 own specification: every published number in docs/00–15 reproduced from the
@@ -1051,6 +1110,7 @@ been run there.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `animation_spec` (329) | docs/15 §2's 29 clips by name and group in both directions, its priority order as an ordering, every procedural stand-in proven to exist, every motion bounded and every motion proven reachable, all 20 archetypes tuned and the spread measured, the gait thresholds driven at both boundaries and every archetype proven to read as running at its own chase speed, and every one of `ChaseConfig`'s nine abilities proven to map to a real clip |
 | `minimap_spec` (106) | `ZoneConfig.ZoneAt` driven at every zone's centre, both edges, all four corners and the boundary itself; the projection proven to land every zone corner, all 24 plots, the hub edge and the Obelisk inside the map with the ten-zone build-out checked too; and the position boundary that stops the map leaking a player the server had not announced |
 | `step24_spec` (570) | docs/14's 46 events asserted by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats with no two sharing one, all fifteen economy tags with their source/sink direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template's defaults in both directions, and four of docs/12 §4's nine launch gates actually decided |
 | `step23_spec` (259) | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate, a skipper and a stateless profile, the chase cap driven against every one of the 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the two cheats (jump and replay) refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's fifteen-second budget |
@@ -1640,7 +1700,7 @@ Bugs the specs caught before they shipped:
     be unreached, mis-set or silently exceeded when the assertion was first
     written.
 
-46. **Two controllers were in the roster and never built; one still is.**
+46. **Two controllers were in the roster and never built. Both are now.**
     `Bootstrap`'s `CONTROLLER_ORDER` named 21 and 19 existed.
 
     Their absence was **silent**, and that is the part worth keeping: the
@@ -1650,12 +1710,12 @@ Bugs the specs caught before they shipped:
     build and exactly the wrong one at the end of it, where a controller that
     never got written looks identical to one that is not needed yet.
 
-    `MinimapController` **has since been built** — see below. `AnimationController`
-    (Step 9, guardian and dinosaur animation playback) is honestly blocked:
-    there are no animation assets, and the project's standing rule is that an
-    invented `rbxassetid://` is a silent 404 that looks like working code, the
-    same call `SoundController` and Professor Rok make. It arrives with the
-    animation pass.
+    `MinimapController` and `AnimationController` were both built after the
+    fact, and each turned up a real bug on the way in (findings 47 and 48). The
+    lesson is not about either controller: **a tolerant loader needs an
+    intolerant check at the end.** One assertion that the roster and the folder
+    agree, run once when the build is called finished, would have caught both
+    on the day they were skipped rather than four steps later.
 
 47. **Building the minimap turned up a third copy of the same square test.**
     `ZoneService.ZoneAt` decided which zone a world position is in. The minimap
@@ -1677,6 +1737,27 @@ Bugs the specs caught before they shipped:
     caller is what exposes the duplicate.** Two implementations of a square
     test agree by luck; the third is written by someone who has not read the
     first two.
+
+48. **The animation ability table was six-ninths wrong, and its own spec caught
+    it on the first run.** `AnimationConfig.AbilityClip` maps a guardian's
+    ability to the clip its wind-up leads into. I wrote it from memory of what
+    those abilities were probably called: `dive`, `packcall`, `stomp`, `sweep`,
+    `burrow`, `roar`.
+
+    `ChaseConfig`'s actual strings are `swoop`, `pack`, `burst`, `predict`,
+    `blink`, `glitch`. Six of the nine mapped to nothing — six archetypes whose
+    wind-up crouch would lead into no tell at all, with no error anywhere,
+    because an unmapped ability is a legitimate "this one has no clip".
+
+    Guessing the keys of a table sitting in the next file is how that happens,
+    and the only reason it did not ship is that the spec iterated
+    `ChaseConfig.Archetypes` rather than iterating my table.
+
+    The same run caught a second one: the crouch ran 1.0 s against a shortest
+    wind-up of 0.5 s, so the tell would still be playing when the charge it
+    warned about fired. A tell that outlasts its own warning is worse than no
+    tell. The hold now takes the archetype's own `AbilityWindupSecs` as its
+    duration.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

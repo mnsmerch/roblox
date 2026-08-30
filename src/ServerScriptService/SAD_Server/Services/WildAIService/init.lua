@@ -400,6 +400,25 @@ local function tryAbility(chase, now: number, thiefPlayer: Player, distance: num
 	chase.WindupUntil = now + windup
 	chase.AbilityUntil = chase.WindupUntil + (archetype.AbilityDuration or 0)
 
+	--[[
+		docs/03 §1.2 calls the wind-up "the tell the player reacts to", and
+		until now it existed only as a speed change - a tell you feel a second
+		late rather than one you see.
+
+		Stamped as ATTRIBUTES rather than sent as a remote. Attributes replicate
+		on their own, this costs no packet of ours and no entry in `Net`, and a
+		client that ignores them is exactly as correct as one that does not.
+		`AnimationController` reads them to play the crouch.
+
+		`os.clock()` is per-machine, so the DURATION is published rather than a
+		deadline the client cannot compare against its own clock.
+	]]
+	if chase.Model then
+		chase.Model:SetAttribute("Ability", archetype.Ability)
+		chase.Model:SetAttribute("WindupSecs", windup)
+		chase.Model:SetAttribute("AbilityAt", os.time())
+	end
+
 	local ability = archetype.Ability
 
 	if ability == "slow" then

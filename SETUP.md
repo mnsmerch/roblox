@@ -756,6 +756,44 @@ only player besides you who can ever appear is a raider the server has already
 announced in your own park, and they vanish when the raid resolves. Two clients,
 one stealing from the other, is the way to check it.
 
+### The animation pass
+
+`AnimationController` is a **ModuleScript** under `Controllers`, already in the
+roster as a Step 9 reservation, so the Bootstrap does not change. Re-paste
+`SAD_Shared/Config/AnimationConfig` (new) and
+`Services/WildAIService` (it now stamps three attributes on the guardian model).
+
+**There are still no animation assets, and that is not what this controller is
+waiting on.** The placeholder models have no rig — no Humanoid, no joints — so a
+Roblox `Animation` has nothing to move on them. What runs today is procedural:
+a local CFrame offset on top of the server pivot.
+
+**Test it.** Steal an egg and look at the guardian:
+
+- Standing still, it **breathes** — a slow half-stud lift.
+- Chasing, it **strides** — a harder bob and a forward lean, scaled by speed.
+- A Charger or Titan **crouches** for the length of its wind-up, then lunges.
+  That is docs/03 §1.2's tell, which until now was a speed change you felt a
+  second late rather than one you saw.
+- A Bulldozer lumbers, a Skitterer scurries, a Titan is slow and huge. Same
+  code path, twenty characters.
+
+```lua
+-- In the client command bar, mid-chase:
+print(require(game.Players.LocalPlayer.PlayerScripts
+    .SAD_Client.Controllers.AnimationController).Report())
+-- { Tracked = n, Animated = n, Rigged = 0, Procedural = n }
+```
+
+`Rigged = 0` is expected and correct today. It becomes non-zero the moment a
+model with a Humanoid appears.
+
+**When real assets arrive:** put `Animation` instances named after
+`AnimationConfig`'s clips (`Idle`, `Walk`, `Run`, `Roar`, `CarryEgg`, `Trip`…)
+under `ReplicatedStorage/SAD_Assets/Animations`. A rigged model then plays the
+real clip and stops using the procedural path — no code change, the same seam
+`SoundController` and the nest anchors use.
+
 ### Turning analytics on
 
 Custom events and custom fields have to be enabled per experience before
@@ -3080,15 +3118,14 @@ people, a device or a soak, and are listed as work rather than ticked.
 | Data loss | 0 across 500 sessions | ⬜ needs a soak |
 | Exploit sim | 0 state changes | ⬜ **built and covers all 29 remotes — needs running** |
 
-### One controller is named and not built
+### Every controller in the roster now exists
 
-`Bootstrap`'s roster lists 21 controllers; **20** exist. `AnimationController`
-(Step 9) is blocked on there being no animation assets — it arrives with the
-animation pass.
-
-The client Bootstrap tolerates a missing controller on purpose, so this prints
-as information rather than as an error. Do not read "Not built yet (1)" as
-"nothing is wrong".
+`Bootstrap`'s roster lists 21 and all 21 are built. Worth knowing why that
+sentence is here at all: the client Bootstrap tolerates a missing controller on
+purpose, printing "Not built yet" as information rather than as an error, and
+two of them stayed missing for four steps because of it. A tolerant loader needs
+an intolerant check at the end — if you add a controller to the roster, add the
+file in the same commit.
 
 ### Before you publish
 
@@ -3105,7 +3142,7 @@ as information rather than as an error. Do not read "Not built yet (1)" as
 
 ## Running the offline specs
 
-Syntax-checks every source file and runs **4,766 assertions** without Studio:
+Syntax-checks every source file and runs **5,095 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -3135,6 +3172,7 @@ Fetches the Luau CLI on first run.
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
+| `tests/animation_spec.lua` | docs/15 §2's 29 clips by name and group in both directions, its priority order, every procedural stand-in proven to exist and every motion proven reachable and bounded, all 20 archetypes tuned with the spread measured, the gait thresholds at both boundaries with every archetype proven to read as running at its own chase speed, and all nine of `ChaseConfig`'s abilities proven to map to a real clip |
 | `tests/minimap_spec.lua` | `ZoneConfig.ZoneAt` at every zone's centre, both edges, all four corners and the boundary; the projection proven to land every fixture inside the map with the ten-zone build-out checked; and the boundary that stops the map leaking an unannounced player |
 | `tests/step24_spec.lua` | docs/14's 46 events by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats, all fifteen economy tags with their direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template in both directions, and four of docs/12 §4's nine launch gates decided |
 | `tests/step23_spec.lua` | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate/skipper/stateless profile, the chase cap driven against all 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the jump and replay cheats refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's budget |
