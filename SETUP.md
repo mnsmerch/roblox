@@ -701,6 +701,41 @@ no code change.
 
 ---
 
+## Step 24 — polish, analytics, hardening
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/AnalyticsConfig` | `src/.../Config/AnalyticsConfig.lua` *(new)* |
+| `Services/AnalyticsService` | `src/.../Services/AnalyticsService/init.lua` *(new)* |
+| `SAD_Client/Controllers/SettingsController` | `src/.../Controllers/SettingsController.lua` *(new)* |
+| `SAD_Client/DebugExploitClient` | `src/.../SAD_Client/DebugExploitClient.client.lua` *(new)* |
+
+`AnalyticsService` and `SettingsController` are already in their rosters — they
+were reserved in Step 1 and Step 5 — so neither Bootstrap changes this step.
+
+### DebugExploitClient is a **LocalScript**, and it must be Disabled
+
+Paste it as a **LocalScript** directly under `SAD_Client` (a sibling of
+`Bootstrap`, *not* inside `Controllers`), then tick **Disabled** on it in the
+Properties panel.
+
+It is guarded three ways — `Disabled`, an `IsStudio()` return before its own
+requires, and the checklist below — but the one that matters is the last:
+
+> **Delete `DebugExploitClient` before publishing.**
+
+### Turning analytics on
+
+Custom events and custom fields have to be enabled per experience before
+anything appears: **Creator Dashboard → your experience → Analytics**. Until
+then the calls succeed and the dashboard stays empty, which is indistinguishable
+from broken code — hence `AnalyticsService.Report()`.
+
+Roblox also drops analytics for unpublished places, so failures in a Studio Play
+test of an unpublished place are expected and the service says so at boot.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -2910,9 +2945,138 @@ Fire `RequestTutorialStep` with 12 from a client and nothing happens.
 
 ---
 
+## Step 24 test
+
+**1. Boot.** Play. The new lines:
+
+```
+[SAD/S][AnalyticsService] Ready. 46 event(s) wired, 400/min budget, 10% sampling
+[SAD/C][SettingsController] Ready. 13 setting(s), generated from the schema
+[exploit] DebugExploitClient loaded. Run it with:  _G.SAD_DebugExploit.Run()
+```
+
+If `AnalyticsService` reports events with no source, that is the coverage check
+working — it names them.
+
+**2. Is the telemetry actually working?** The question this whole step is
+arranged to answer, because analytics fail silently:
+
+```lua
+local A = require(game.ServerScriptService.SAD_Server.Services.AnalyticsService)
+-- play for a minute, steal an egg, hatch it, then:
+local r = A.Report()
+print(r.Sent, r.Failed, r.Dropped)
+for name, count in r.ByEvent do print(name, count) end
+```
+
+`Failed` climbing with a single named warning in Output means a **signature
+mismatch**, not a broken game — every call is pcall'd. The one to check first
+is `LogProgressionEvent`, whose trailing argument order I could not verify; the
+fix is one function in `AnalyticsService`.
+
+`Failed` climbing in an *unpublished* place is expected: Roblox drops analytics
+there.
+
+**3. The three-field limit.** The silent one. A fourth custom field is dropped
+by Roblox without an error, so it is bounded in config instead:
+
+```lua
+local AC = require(game.ReplicatedStorage.SAD_Shared.Config.AnalyticsConfig)
+print(AC.BuildFields("EggHatched", {
+    rarity = "epic", species = "trex", mutation = "golden",
+    mutation2 = "electric", wasPrime = true, weather = "storm",
+}))
+-- exactly three keys out of six attributes in
+```
+
+**4. Settings.** ⚙️ on the left rail. Thirteen rows, every one generated from
+`GameConfig.SettingsSchema` — the same table the server validates writes
+against. Change one, then check it round-tripped:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+print(PDS.Get(game.Players:GetPlayers()[1]).Settings)
+```
+
+Then try to break it from the client — a value past a bound snaps back, because
+the row redraws from the replicated profile rather than from the click.
+
+**5. Low Graphics.** Turn it on. Global shadows go off, particle emitters drop
+to zero rate, and park dinosaurs past `VfxCullDistance` are marked for culling.
+Turn it off — everything returns, because emitters are rate-scaled from a stored
+`BaseRate` rather than destroyed.
+
+**6. The exploit sweep.** docs/12 §4's gate. Play in Studio, then:
+
+```lua
+_G.SAD_DebugExploit.Run()
+```
+
+It fires **all 29** client→server remotes with hostile arguments — negative
+purchase levels, other players' uids, `math.huge`, NaN, a 5,000-entry table,
+`__index` as a settings key, `RequestTutorialStep(12)` to claim the completion
+grant — then diffs the profile.
+
+The pass condition is literal:
+
+```
+  RESULT: PASS - 0 state changes. docs/12 §4's exploit gate is met.
+```
+
+Any line under a FAIL names a field that moved and therefore a remote handler
+that trusted its input. `blocked by Net` in the report counts calls the
+**client-side** argument validation rejected — those never reached the server,
+so they tested nothing; a high number there means the sweep needs arguments
+that pass validation but are still hostile.
+
+---
+
+## Launch checklist
+
+docs/12 §4's gates. Four are decided by `tests/step24_spec.lua`; five need
+people, a device or a soak, and are listed as work rather than ticked.
+
+| Gate | Threshold | Status |
+|---|---|---|
+| Economy | day-1 curve within ±20 % of docs/05 §8 | ✅ offline — 8 %, 4 % and 3 % off across the three rows |
+| Save/load | 100 % round-trip across all migrations | ✅ offline — chain contiguous, every version migrates forward |
+| Mobile UI | one-thumbed on 5.5″ | ✅ offline — bottom bar 88 px, prompt 152 px, reach 288 px |
+| Moderation | no unfiltered user text | ✅ offline — V1 ships none; re-check when park naming lands in V1.4 |
+| Tutorial completion | ≥ 75 % | ⬜ needs a playtest |
+| Crash-free sessions | ≥ 99.5 % | ⬜ needs a soak |
+| Frame rate | ≥ 45 fps p10, 2019 mid Android, 30 players | ⬜ needs a device |
+| Data loss | 0 across 500 sessions | ⬜ needs a soak |
+| Exploit sim | 0 state changes | ⬜ **built and covers all 29 remotes — needs running** |
+
+### Two controllers are named and were never built
+
+`Bootstrap`'s roster lists 21 controllers; **19** exist. `AnimationController`
+(Step 9) is blocked on there being no animation assets — it arrives with the
+animation pass. `MinimapController` (Step 14) is not blocked and is a real V1
+hole: the 🗺️ rail button and the **M** key fire `ToggleMap` and nothing
+listens.
+
+The client Bootstrap tolerates a missing controller on purpose, so this prints
+as information rather than as an error. Do not read "Not built yet (21)" as
+"nothing is wrong".
+
+### Before you publish
+
+- [ ] **Delete `DebugExploitClient`.**
+- [ ] Build `MinimapController`, or remove the 🗺️ button and the **M** binding.
+- [ ] Paste real ids into `ProductConfig` — all 14 ship as `AssetId = 0`.
+- [ ] Enable **Studio Access to API Services** (leaderboards) and custom
+      analytics events on the Creator Dashboard.
+- [ ] Run every per-step Play test in this file. **None of them has been run.**
+- [ ] Set `GameConfig.UseMockDataInStudio = false` if you changed it.
+- [ ] Verify `LogProgressionEvent`'s signature against the Creator
+      Documentation (see the Step 24 test).
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **4,090 assertions** without Studio:
+Syntax-checks every source file and runs **4,660 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2942,6 +3106,7 @@ Fetches the Luau CLI on first run.
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
+| `tests/step24_spec.lua` | docs/14's 46 events by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats, all fifteen economy tags with their direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template in both directions, and four of docs/12 §4's nine launch gates decided |
 | `tests/step23_spec.lua` | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate/skipper/stateless profile, the chase cap driven against all 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the jump and replay cheats refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's budget |
 | `tests/step22_spec.lua` | The four V1 boards against docs/12's list and docs/10 §4's store names, every board's value read off a profile, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against 14,400, the rank contract outside the top 100, and the Colosseum's geometry at 1, 4 and 8 pillars |
 | `tests/step21_spec.lua` | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; no asset id invented, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches and against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; VIP's offline rate through to the hourly payout; and both store orders proven to cover the catalogue exactly once |

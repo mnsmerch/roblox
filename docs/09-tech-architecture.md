@@ -92,9 +92,10 @@ ServerScriptService
         ├── PurchaseService          ProcessReceipt, ownership cache, server boosts
         ├── LeaderboardService       the ONLY file that touches OrderedDataStore
         ├── TutorialService          owns the step number; checks every advance
+        ├── AnalyticsService         the ONLY file that touches Roblox's AnalyticsService.
+        │                            Subscribes to 40+ existing Signals; nothing calls it
         ├── NotificationService      the one place a notification is created
-        ├── BroadcastService         MessagingService: the only file that knows it exists
-        └── AnalyticsService         AnalyticsService wrappers + custom logging
+        └── BroadcastService         MessagingService: the only file that knows it exists
 
 StarterPlayer
 └── StarterPlayerScripts
@@ -125,7 +126,7 @@ StarterPlayer
             ├── PurchaseController   the store, the honesty panel, Thanks
             ├── LeaderboardController  the boards screen and the Colosseum
             ├── TutorialController   Rok, one arrow, one objective line, skip
-            └── SettingsController
+            └── SettingsController   generated from GameConfig.SettingsSchema
 
 (StarterGui is empty. SAD_UI is CREATED AT RUNTIME by UIController into
  PlayerGui - the interface is built in code so it stays in version control and

@@ -11,6 +11,27 @@ Documentation at implementation time (Step 24) rather than guessing here** —
 these APIs have changed shape before, and a wrong signature fails silently,
 which is the worst failure mode for telemetry.
 
+**Step 24 status, stated plainly.** I could not verify these against live
+documentation, so I did not pretend to. Instead every call goes through one
+pcall'd adapter in `AnalyticsService`, each method warns **once** naming itself
+on failure, and `AnalyticsService.Report()` prints what was sent and what
+failed — so a single Studio Play test answers "is my telemetry working" and a
+wrong signature degrades to a warning rather than to silence.
+
+`LogCustomEvent`, `LogOnboardingFunnelStepEvent` and `LogEconomyEvent` I am
+reasonably confident of. **`LogProgressionEvent`'s trailing argument order I am
+not** — verify that one first; the fix is one function.
+
+**Three custom fields, not more.** Roblox carries exactly three per event
+(`Enum.AnalyticsCustomFieldKeys.CustomField01…03`), and a fourth is dropped
+rather than erroring. Several events below name more attributes than that, so
+`AnalyticsConfig.Fields` declares per event *which three survive and in what
+order* — a decision made once rather than by whoever wrote the call site.
+`EggHatched`, which names six, keeps rarity, species and mutation; `mutation2`
+and `wasPrime` are recoverable from each other and rare enough to live in the
+value, and `weather` is already on `WeatherStarted` with a timestamp so it can
+be joined rather than duplicated onto every hatch in the game.
+
 ---
 
 ## 1. Events to log
@@ -126,6 +147,10 @@ Shields and Insurance — not to remove stealing, which is the game's identity.
 ## 4. Sampling & cost
 
 - `FrameTimeSample` and `EconomySnapshot` are sampled at **10 %** of players.
+  Sampling is keyed on the **user id**, not rolled per event: a per-event roll
+  gives 10 % of everybody's snapshots, which cannot be joined into a per-player
+  series — and a series is the whole point of `EconomySnapshot`. Measured over
+  20,000 ids: 10.0 %.
 - High-frequency loop events (`EggStolen`, `EggHatched`) are logged in full —
   they're the core dataset.
 - No personally identifying data is logged. UserIds only, never usernames, never

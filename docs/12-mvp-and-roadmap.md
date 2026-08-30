@@ -124,3 +124,23 @@ Ship only when **all** are true:
 | Save/load | 100 % round-trip fidelity across all migrations |
 | Mobile UI | Every action completable one-thumbed on a 5.5" screen |
 | Moderation | No unfiltered user text anywhere |
+
+**Which of these can be decided without a playtest (Step 24).** Four; the other
+five need people, a device or a soak, and `tests/step24_spec.lua` says so rather
+than marking them green.
+
+| Gate | Decided offline? | Status |
+|---|---|---|
+| Economy | ✅ | All three of docs/05 §8's published rows reachable within 20 % — 5 min at 8 % off, 20 min at 4 %, 60 min at 3 % |
+| Save/load | ✅ | Migration chain contiguous and valid; every version migrates forward without throwing |
+| Mobile UI | ✅ | Bottom bar at 88 px and the action prompt reaching 152 px, both inside a 288 px thumb reach on a 5.5″; the 64 px touch-target floor holds across twelve viewports |
+| Moderation | ✅ | V1 ships **no player-authored text at all** — park naming is V1.4, trading V1.5. The only player-derived strings shown are Roblox display names, which Roblox filters at source. Re-check the day park naming ships |
+| Tutorial completion | ❌ | Needs a playtest |
+| Crash-free sessions | ❌ | Needs a soak |
+| Frame rate | ❌ | Needs a 2019 mid-range Android and 30 players |
+| Data loss | ❌ | Needs a 500-session soak |
+| Exploit sim | ❌ | `DebugExploitClient` is built and covers **all 29** client→server remotes, but it has to be *run* in Studio |
+
+The 60-minute row is only reachable with Epics, which is worth knowing on its
+own: docs/05 §8's hour is an hour in which a Rare has stopped being the best
+thing you own.

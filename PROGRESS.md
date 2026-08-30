@@ -3,7 +3,14 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 23 of 24 complete.** The loop is playable, resettable, purchasable, ranked and taught. Awaiting the Studio Play tests before Step 24.
+## Status: **All 24 build steps complete.** The V1 game is written.
+
+**It has never run in Roblox Studio.** Twenty-four steps of code and 4,660
+offline assertions, and not one Play test. That is the single most important
+thing on this page: everything below describes code that is *correct against
+its own specification*, not code that has been seen to work. SETUP.md has a
+per-step install table and Play test for every one of them, and running them is
+the next thing that should happen.
 
 ## Completed
 
@@ -34,6 +41,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 21** — purchases | 6 passes, 8 products, the receipt ring, 162 more assertions |
 | 2026-08-30 | **Step 22** — leaderboards | 4 boards, the throttle, the Colosseum, 113 more assertions |
 | 2026-08-30 | **Step 23** — tutorial | 12 beats, four bends, the server-owned step, 259 more assertions |
+| 2026-08-30 | **Step 24** — polish, analytics, hardening | 46 events, the settings menu, the exploit sweep, 570 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -62,7 +70,7 @@ accident. Updated at the end of every build step.
 | 21 | Purchases | ✅ **done** |
 | 22 | Leaderboards | ✅ **done** |
 | 23 | Tutorial | ✅ **done** |
-| 24 | Polish, analytics, hardening | ⬜ |
+| 24 | Polish, analytics, hardening | ✅ **done** |
 
 ## What exists in Studio
 
@@ -91,6 +99,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/ProductConfig` | ModuleScript | 6 gamepasses + 8 products, their effects, and **no invented asset ids** |
 | `Config/LeaderboardConfig` | ModuleScript | 4 boards, the value ceiling, and the budget arithmetic that sets the schedule |
 | `Config/TutorialConfig` | ModuleScript | The 12 beats, the four bends, and the advance check — all pure |
+| `Config/AnalyticsConfig` | ModuleScript | docs/14's 46 events, the 3-field limit, sampling, and docs/12 §4's gates |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -152,6 +161,7 @@ rebuilds this on every server start.
 | `Services/PurchaseService` | ModuleScript | **The only file that touches MarketplaceService.** Receipts, ownership, server boosts |
 | `Services/LeaderboardService` | ModuleScript | **The only file that touches OrderedDataStore.** Throttled writes, the 60 s read cache |
 | `Services/TutorialService` | ModuleScript | Owns the step number; checks every advance against real state |
+| `Services/AnalyticsService` | ModuleScript | **The only file that touches Roblox's AnalyticsService.** Pure listener |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -639,6 +649,60 @@ asserts the requirement set and the computed set match at boot — the same
 coverage discipline the replication allowlist and `RebirthConfig`'s three lists
 use — and the spec drives it to a real failure.
 
+### Step 24 — polish, analytics, hardening
+
+```
+AnalyticsConfig.Custom / CustomOrder / Get(name) / CountCustom()
+AnalyticsConfig.Onboarding / OnboardingForBeat(beat)
+AnalyticsConfig.EconomyTags / IsSink(tag) / Currencies
+AnalyticsConfig.MaxCustomFields / FieldKeys
+AnalyticsConfig.BuildFields(eventName, attributes) -> { [key]: string }?
+AnalyticsConfig.IsSampled(userId, eventName) -> boolean
+AnalyticsConfig.LaunchGates                    -- docs/12 §4, with Offline flags
+
+AnalyticsService.Custom(player?, eventName, value?, attributes)
+AnalyticsService.Economy(player, tag, currency, amount, endingBalance)
+AnalyticsService.Onboarding(player, step)
+AnalyticsService.Progression(player, path, level?, fields)
+AnalyticsService.Report() -> { Sent, Failed, Dropped, ByEvent }
+AnalyticsService.ValidateCoverage() -> ok, problem?
+```
+
+**Not one analytics call was added to any other service.** All 46 events are
+subscribed from Signals that already existed. That is the difference between
+telemetry that survives a year and telemetry that rots: sprinkling
+`Analytics.Log(...)` through twenty services makes every future change to those
+services a chance to forget a log line, silently. Here, adding an event is one
+subscription in one file, and `ValidateCoverage` reports any catalogue event
+with no source.
+
+**Three custom fields, and which three is a decision.** Roblox carries exactly
+three per event and drops a fourth without erroring. docs/14 names six
+attributes for `EggHatched`; `AnalyticsConfig.Fields` declares that rarity,
+species and mutation survive, and the spec asserts no event declares more than
+three and that `BuildFields` never emits a fourth key whatever it is handed.
+
+**Signatures I could not verify, and what was done instead.** docs/14 says not
+to guess these. I could not check them against live documentation, so every
+call goes through one pcall'd adapter that warns **once per method** naming
+itself, and `Report()` prints sent/failed/dropped. A wrong signature is a named
+warning, never silence, and never a broken game. `LogProgressionEvent`'s
+trailing argument order is the one to verify first.
+
+**The settings menu is generated from the schema the server validates.** Not a
+hand-written list of rows — the two drift the first time a setting is added, and
+both directions are silent. The spec asserts every schema key has a renderable
+type, bounds or options where its type needs them, a matching template default,
+and that the default satisfies its own schema.
+
+**The exploit sweep covers all 29 client→server remotes**, with hand-written
+hostile arguments rather than a fuzzer: negative purchase levels, other
+players' uids, `math.huge`, NaN, a 5,000-entry table, `__index` as a settings
+key. It runs in two passes — legal calls first so the baseline is taken after
+whatever they legitimately move, then the measured hostile pass — and diffs the
+profile into named field changes. Three guards keep it out of a live server, and
+deleting it before publishing is on the launch checklist.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -764,6 +828,7 @@ client never hears about; there is no polling fallback by design.
 | `PurchaseController` | ModuleScript | The Robux store, the honesty panel, the server-boost banner and Thanks. **Prompts; never grants** |
 | `LeaderboardController` | ModuleScript | The boards screen and the Colosseum's pillars and statues, from one cached fetch |
 | `TutorialController` | ModuleScript | Professor Rok, one world arrow, one objective line, skip. **Asks; never decides** |
+| `SettingsController` | ModuleScript | Generated from `GameConfig.SettingsSchema`; owns Low Graphics |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -800,8 +865,9 @@ current value, then on every change at or under that path. No polling anywhere.
 
 | Object | Type |
 |---|---|
-| `Bootstrap` | **LocalScript** — the only LocalScript in the project |
-| `Controllers` | Folder — empty; populated one controller per build step |
+| `Bootstrap` | **LocalScript** — one of two LocalScripts in the project |
+| `DebugExploitClient` | **LocalScript**, `Disabled` — the exploit sweep. Studio-guarded; **delete before publishing** |
+| `Controllers` | Folder — **19** built; two more are in the roster and were never written (see the gaps below) |
 
 ## Declared deviations from the frozen contract
 
@@ -911,11 +977,28 @@ current value, then on every change at or under that path. No polling anywhere.
 | 102 | The tutorial's skip egg is granted through `RewardGrant` | Step 19 made it "the one place a reward is paid out". A tutorial egg written straight into `Profile.Eggs` would skip the storage cap, the notification and the analytics that every other granted egg goes through | docs/05 §7 |
 | 103 | Added `ParkConfig.PlotSearchOrder`; plots are claimed nearest-the-free-zone-first | docs/00 §3 budgets 15 s for the walk out to Jurassic Plains and the blockout makes it 10–67 s depending on plot. Sorting the claim order front-loads the short walks — measured, the first eight joiners walk 33 % less. It does not reduce total walking and does not fix the worst case; see finding 42 | docs/00 §3, docs/02 §1.1 |
 | 104 | Added `TutorialService` (server) and `TutorialController` (client) | docs/13 §Step 23 asks for "`TutorialController` + a small server validator in `PlayerDataService`". The validator is a service instead: it needs signals from `WildAIService` and `EconomyService`, a remote handler, and a boot-time coverage assertion, none of which belong in the data layer. `PlayerDataService` stays the thing that reads and writes profiles | docs/09 §1, docs/13 §Step 23 |
+| 105 | Added `AnalyticsConfig` as config module #20 | The event catalogue has to be assertable, and a catalogue written inline at forty call sites is not. It also holds the per-event field selection, which is a decision that should be made once and reviewable rather than by whoever wrote each call | docs/09 §1, docs/14 §1 |
+| 106 | `AnalyticsService` subscribes to existing Signals; **no analytics call was added to any other service** | docs/14 asks for ~46 events across twenty services. Sprinkled through them, every future change to those services is a silent chance to drop a log line. As subscriptions in one file, adding an event is one edit and `ValidateCoverage` reports any that has no source | docs/09 §1, docs/14 §1 |
+| 107 | Each docs/14 event declares **which three** attributes survive | Roblox carries exactly three custom fields and drops a fourth without erroring. `EggHatched` names six in docs/14; rarity, species and mutation are kept. Declared in config so the choice is reviewable rather than made at a call site | docs/14 §1 |
+| 108 | `LogProgressionEvent`'s argument order is **not verified**, and says so | docs/14's own instruction was not to guess these. Rather than pretending, every call is pcall'd behind one adapter that warns once per method naming itself, and `Report()` prints what was sent and what failed. A wrong signature is a named warning rather than silence | docs/14 |
+| 109 | `AnalyticsConfig.EventsPerMinute` is **our** budget, not Roblox's | I do not know Roblox's current published analytics rate limit and will not invent one. 400/min is self-imposed and well under any plausible figure; the service counts what it drops, so the real headroom is measurable rather than assumed | docs/14 §4 |
+| 110 | Sampling is keyed on the **user id**, not rolled per event | A per-event roll gives 10 % of everybody's snapshots, which cannot be joined into a per-player series — and a series is the whole point of `EconomySnapshot`. Measured over 20,000 ids: 10.0 % | docs/14 §4 |
+| 111 | The settings menu is **generated** from `GameConfig.SettingsSchema` | A hand-written menu and the server's schema drift the first time a setting is added: a control for a key the server drops, or a hidden key it accepts. Both silent. Only the labels are hand-written, and a key with no label still renders using its own name | docs/06 §8 |
+| 112 | Added `DebugExploitClient` as the project's second LocalScript | docs/13 §Step 24 asks for it by name. Three guards: `Disabled` by default, an `IsStudio()` return before its own requires, and deletion before publishing on the launch checklist | docs/12 §4, docs/13 §Step 24 |
+| 113 | `Enum.AnalyticsCustomFieldKeys` is checked against `AnalyticsConfig.FieldKeys` at boot | The config is deliberately dependency-free so it can be required and tested outside Roblox, which means the key strings are literals. A Roblox-side rename would otherwise produce events whose fields nobody can query — silently | docs/14 §1 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 91 source files and runs **4,090
-assertions** outside Roblox. Last run: **4,090 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 95 source files and runs **4,660
+assertions** outside Roblox. Last run: **4,660 passed, 0 failed.**
+
+**What these do and do not prove.** They prove the code is correct against its
+own specification: every published number in docs/00–15 reproduced from the
+formula that generates it, every cap driven past, every ordering that could pay
+twice modelled as a state machine and crashed at each step. They prove nothing
+about Roblox. `Net`, `Log`, both Bootstraps, every service's lifecycle and
+everything ProfileStore-dependent need Studio to exercise, and **none of it has
+been run there.**
 
 | Spec | Covers |
 |---|---|
@@ -931,6 +1014,7 @@ assertions** outside Roblox. Last run: **4,090 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step24_spec` (570) | docs/14's 46 events asserted by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats with no two sharing one, all fifteen economy tags with their source/sink direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template's defaults in both directions, and four of docs/12 §4's nine launch gates actually decided |
 | `step23_spec` (259) | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate, a skipper and a stateless profile, the chase cap driven against every one of the 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the two cheats (jump and replay) refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's fifteen-second budget |
 | `step22_spec` (113) | The four V1 boards against docs/12's list and docs/10 §4's reserved store names, every board's value read off a profile including the emptied park that must keep its Income place, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates computed at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against a naive 14,400, the rank contract for a player outside the top 100, and the Colosseum's geometry against the plaza and the park ring at 1, 4 and 8 pillars |
 | `step21_spec` (162) | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; **no asset id invented**, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches *and* against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; server purchases; VIP's offline rate all the way through to the hourly payout; every gamepass effect proven to declare a combination mode; and both store orders proven to cover the catalogue exactly once |
@@ -1488,6 +1572,61 @@ Bugs the specs caught before they shipped:
     fixture now deletes the key after construction, and the case it was written
     for — an old save reaching a server before Reconcile fills the field — is
     genuinely covered.
+
+44. **docs/05 §8's 60-minute row is not reachable without Epics.** The launch
+    gate asks for the day-1 curve within ±20 % of the published rows, and
+    searching the space of parks a player could plausibly hold finds all three
+    — but the hour row (380 F/s) needs **5 Epics**. No quantity of Rares gets
+    there: sixteen of them, the most the slot track reaches inside an hour,
+    lands at 234.
+
+    That is not a failure, and the gate passes. It is a fact about what the
+    curve assumes that is worth stating before a playtest reads low: docs/05's
+    hour is an hour in which a Rare has stopped being the best thing you own,
+    so the number to watch in a playtest is **time to first Epic**, not time to
+    first Rare. If Epics arrive later than the hour mark in practice, the curve
+    is right and the drop rates are wrong, which is a much cheaper fix than the
+    other way round.
+
+45. **`Economy.MaxFossils` and the analytics field limit are the same class of
+    bug, found four steps apart.** Both were a number written once, never
+    checked against the thing it was supposed to bound, and silent when wrong:
+    a clamp fifteen orders of magnitude past where the arithmetic stops working
+    (finding 39), and a fourth custom field that Roblox drops without erroring.
+
+    Worth recording as a pattern rather than two entries, because it is the one
+    this project has hit most: **a limit that nothing asserts is not a limit.**
+    Every cap in the codebase now has a spec that drives a value past it — the
+    ×40 mutation cap, the 2-hour shield stack, the 2^53 ceiling, the 100-entry
+    receipt ring, the 3 custom fields — and three of those five were found to
+    be unreached, mis-set or silently exceeded when the assertion was first
+    written.
+
+46. **Two controllers are in the roster and were never built.** `Bootstrap`'s
+    `CONTROLLER_ORDER` names 21; 19 exist on disk. Missing:
+
+    | Controller | Named in | What it was for |
+    |---|---|---|
+    | `AnimationController` | Step 9 | Guardian and dinosaur animation playback |
+    | `MinimapController` | Step 14 | The minimap, and the 🗺️ / **M** action |
+
+    Their absence is **silent**, and that is the part worth recording: the
+    client Bootstrap deliberately tolerates a missing controller so the game
+    can be built up one step at a time, printing "Not built yet (21)" as
+    information rather than as an error. That is the right design for a
+    twenty-four-step build and exactly the wrong one for the end of it, where a
+    controller that never got written looks identical to one that is not needed
+    yet.
+
+    `AnimationController` is honestly blocked: there are no animation assets,
+    and the project's standing rule is that an invented `rbxassetid://` is a
+    silent 404 that looks like working code — the same call `SoundController`
+    and Professor Rok make. It arrives with the animation pass.
+
+    `MinimapController` is not blocked; it was simply never written. The 🗺️
+    rail button and the **M** key fire `ToggleMap` and nothing listens. That is
+    a real V1 hole and it is left stated rather than thrown together in the
+    last hour of the last step.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need
