@@ -482,6 +482,25 @@ failure.
 
 ---
 
+## Step 17 — weather
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/WeatherConfig` | `src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua` *(new)* |
+| `Services/WeatherService` | `src/.../Services/WeatherService/init.lua` *(new)* |
+| `SAD_Client/Controllers/WeatherController` | `src/.../Controllers/WeatherController.lua` *(new)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — rule 11)* |
+| `Services/MutationService` | *(re-paste — the zone boost)* |
+| `Services/IncubationService` | *(re-paste — passes the egg's origin zone)* |
+| `Services/NestService` | *(re-paste — weather-scaled respawn)* |
+| `SAD_Client/Bootstrap` | *(re-paste — `WeatherController` in the roster)* |
+
+`WeatherService` is a Folder containing a ModuleScript named `init`, already in
+Bootstrap's roster at position 21. `WeatherController` is **new to the client
+roster** — re-paste `Bootstrap` (the LocalScript) or it will never load.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1910,9 +1929,118 @@ changes to `Ready. 1 of 12 slots have audio`. Nothing else in the game changes.
 
 ---
 
+## Step 17 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][WeatherService] Ready. 4 weathers, rolling every 8m 0s, Clear 60% of the time
+[SAD/S][WeatherService] Clear for 8m 0s
+[SAD/C][WeatherController] Ready. Lighting is local; 4 looks
+```
+
+Sixty percent, not the 45 % docs/04 §2 prints — that 45 % is exact across all
+eleven weathers, and V1 ships four. See the note now in docs/04 §2.
+
+**2. Force each weather.** docs/13's test for this step:
+
+```lua
+local W = require(game.ServerScriptService.SAD_Server.Services.WeatherService)
+W.Set("rainstorm", 60)
+```
+
+The sky greys and the fog closes to 900 studs over three seconds, the event
+banner reads `RAINSTORM · 1m 0s` and counts down, and **you move visibly
+slower**. Then `W.Set("blizzard", 60)` — everything goes white and the fog
+closes to 260. Then `W.Set("clear")`.
+
+**3. Lighting restores.** The one docs/13 names as this step's hazard. After
+cycling every weather and returning to Clear, `Lighting` must be exactly what
+it was at boot:
+
+```lua
+-- Before touching anything, in the CLIENT console (F9):
+print(game.Lighting.Ambient, game.Lighting.Brightness, game.Lighting.FogEnd)
+-- ...cycle all four weathers, end on clear, wait 3 s for the tween...
+print(game.Lighting.Ambient, game.Lighting.Brightness, game.Lighting.FogEnd)
+```
+
+Identical. Lighting is captured once at boot and written only on the client,
+which is why: a server that dies mid-blizzard leaves everyone in fog until it
+restarts, and a client that does the same fixes itself on rejoin.
+
+**4. The mutation shift is measurable.** 10,000 rolls per weather:
+
+```lua
+local Mut = require(game.ServerScriptService.SAD_Server.Services.MutationService)
+local function count(weather, zone)
+    local seen = {}
+    for _ = 1, 10000 do
+        local m = Mut.RollIn(0, weather, nil, zone)
+        seen[m] = (seen[m] or 0) + 1
+    end
+    return seen
+end
+print("clear electric:", count("clear").electric)              -- ~150
+print("storm electric:", count("thunderstorm").electric)       -- ~2,800
+print("blizzard frozen:", count("blizzard").frozen)            -- ~3,400
+print("valley frozen:",  count("blizzard", "frozen").frozen)   -- ~4,500
+```
+
+That last pair is the **×40 cap doing its job**: Blizzard is Frozen ×25 and the
+Frozen Valley doubles it to ×50, which the cap trims to ×40. Uncapped the last
+number would be near 5,500.
+
+**5. Rainstorm speeds nest respawns.** Take an egg from a nest, note how long
+the bowl stays empty in Clear, then repeat during a Rainstorm — 25 % shorter.
+The multiplier is read when the timer is *set*, so weather ending mid-timer
+never lengthens an egg already on its way back.
+
+**6. Lightning knocks eggs loose.** Carry an egg through a Thunderstorm. Every
+12 seconds there is a 10 % chance you drop everything, with a banner. Standing
+empty-handed in a storm is never punished — being struck with nothing to lose
+teaches nothing.
+
+**7. The countdown lands before the weather does.** Set a short one and watch:
+
+```lua
+W.Set("clear", 25)   -- the next roll is 20 s after this ends
+```
+
+A `... IN 20s` banner fires, and only then does the sky change. The point of a
+countdown is that people can move before it arrives.
+
+**8. Weather survives a join.** With a Blizzard running, have a second player
+join. They get the blizzard sky immediately, not the next roll — otherwise
+most of a session is spent looking at whatever `Lighting` shipped with.
+
+**9. Boot validation.** The config report should now include:
+
+```
+ok  [R11] 4 weather(s) validated against their mutation modifiers
+```
+
+Add a weather to `WeatherConfig` without one in `MutationConfig.WeatherModifiers`
+and boot fails naming it. That pairing is the only reason two tables describing
+one thing is safe here.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Fog never clears | `WeatherController` writing keys it did not capture in `baseline` |
+| Sky is right but nothing feels different | Effects applied client-side; they are server truth |
+| Rain slow does not stack with a carried egg | Weather setting `WalkSpeed` directly instead of using the modifier stack |
+| Nest respawn unchanged in rain | `NestService.RespawnMultiplier` resolved in `Init`, before `WeatherService` loads |
+| Two exotics back to back | The forced 3-minute Clear gap is not being applied |
+| Blizzard is no worse in Frozen Valley | The egg's `Origin` zone is not reaching `MutationService.Roll` |
+| Fog still on with LowGraphics | The `Settings.LowGraphics` observer is not re-applying the look |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,964 assertions** without Studio:
+Syntax-checks every source file and runs **3,049 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1938,6 +2066,7 @@ Fetches the Luau CLI on first run.
 | `tests/step14_spec.lua` | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside their zone, zone-vs-park-ring clearance, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim |
 | `tests/step15_spec.lua` | The hold formula against docs/03 §4.2 including V1's real ceiling, shield stacking proven un-permanent, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property, vault slots, and every raid cooldown |
 | `tests/step16_spec.lua` | All four severities against docs/08 §5, a strict priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back downward, payload sanitising against nesting/NaN/long keys and idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own floor |
+| `tests/step17_spec.lua` | The published weather table, the Clear share for V1 *and* the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, and Prime's chance proven flat while its count rises |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

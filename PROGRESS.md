@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 16 of 24 complete.** The game can tell you things. Awaiting the Studio Play tests before Step 17.
+## Status: **Step 17 of 24 complete.** The sky does something. Awaiting the Studio Play tests before Step 18.
 
 ## Completed
 
@@ -27,6 +27,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 14** — zones & teleports | Unlock gates, shrines, the Obelisk, 82 more assertions |
 | 2026-08-30 | **Step 15** — player raiding | The full raid state machine, shields, Vault, 109 more assertions |
 | 2026-08-30 | **Step 16** — notifications & announcements | Four severities, the queue, MessagingService, 87 more assertions |
+| 2026-08-30 | **Step 17** — weather | 4 weathers, the 8-minute roll, local Lighting, 85 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -48,7 +49,7 @@ accident. Updated at the end of every build step.
 | 14 | Zones & teleports | ✅ **done** |
 | 15 | Player raiding | ✅ **done** |
 | 16 | Notifications & announcements | ✅ **done** |
-| 17 | Weather | ⬜ |
+| 17 | Weather | ✅ **done** |
 | 18 | Server events | ⬜ |
 | 19 | Quests, dailies, index | ⬜ |
 | 20 | Rebirth | ⬜ |
@@ -76,6 +77,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/ParkConfig` | ModuleScript | Plot geometry, grid maths, visual tiers |
 | `Config/ChaseConfig` | ModuleScript | 20 guardian archetypes, chase tuning, the guardian cap |
 | `Config/NotificationConfig` | ModuleScript | The 4 severities, queue limits, publish budget, payload sanitising |
+| `Config/WeatherConfig` | ModuleScript | 4 V1 weathers: weights, durations, non-mutation effects |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -125,6 +127,7 @@ rebuilds this on every server start.
 | `Services/StealService` | ModuleScript | The raid state machine, tagging, shields, Vault, insurance |
 | `Services/NotificationService` | ModuleScript | The one place a notification is created |
 | `Services/BroadcastService` | ModuleScript | **The only file that knows MessagingService exists** |
+| `Services/WeatherService` | ModuleScript | The roll, the countdown, and every effect that changes an outcome |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -322,6 +325,41 @@ in and hatching has a sound; until then the call is a no-op. Same stance
 `AssetBuilder` takes for models.
 
 ```
+WeatherConfig.Weathers / Order / RollInterval / CountdownSecs / MinClearGapSecs
+WeatherConfig.Get(weatherId?) -> entry
+WeatherConfig.RollableWeights() -> { [id] = weight }
+WeatherConfig.ClearShare() -> fraction
+WeatherConfig.EffectOf(weatherId?, key, default) -> value
+WeatherConfig.ZoneBoost(weatherId?, zoneId?) -> multiplier
+WeatherConfig.DurationOf(weatherId?) -> seconds
+
+WeatherService.Current() -> weatherId
+WeatherService.EndsAt() -> os.time()
+WeatherService.Set(weatherId, durationSecs?)
+WeatherService.Roll() -> weatherId
+WeatherService.EffectOf(key, default) -> value
+WeatherService.Changed  Signal(weatherId, endsAt)
+
+MutationService.RollIn(mutLuck, weatherId?, rng?, zoneId?)   -- zoneId is new
+MutationService.Roll(player, zoneId?)                        -- zoneId is new
+NestService.RespawnMultiplier() -> number
+
+WeatherController.OnWeatherChanged(info)
+WeatherController.Current() / Remaining()
+```
+
+**Effects are server truth; visuals are local.** Everything that changes an
+outcome — mutation weights, walk speed, nest respawn, lightning — happens in
+`WeatherService`. The sky happens in `WeatherController`, on each client, from
+the replicated weather id.
+
+**Mutation weights are still only in `MutationConfig.WeatherModifiers`.**
+`WeatherConfig` holds weights, durations and non-mutation effects. Two tables
+describing one thing is what deviation #5 removed elsewhere, so this pair only
+survives because ConfigValidator rule 11 asserts they name the same weathers
+at boot.
+
+```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
 WildAIService.GetActiveCount() -> number
@@ -439,6 +477,7 @@ client never hears about; there is no polling fallback by design.
 | `TeleportController` | ModuleScript | The zone wheel, the PARK teleport, gate-barrier visibility |
 | `NotificationController` | ModuleScript | The queue: three visual weights, one takeover at a time |
 | `SoundController` | ModuleScript | 12 named slots, looked up by name; no asset ids invented |
+| `WeatherController` | ModuleScript | Lighting, locally, so it always reverts |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -538,11 +577,15 @@ current value, then on every change at or under that path. No polling anywhere.
 | 54 | `Kind = "reveal"` renamed to `Kind = "takeover"` | "reveal" was a placeholder I introduced in Step 12 before the severities existed; docs/08 §5 names four severities and reveal is not one of them. Renamed at the step that formalises the vocabulary rather than leaving a fifth kind that means the same as one of the four. `HUDController.ShowReveal` keeps its name — it is the renderer, and "reveal" describes what it draws | docs/08 §5 |
 | 55 | `SoundController` contains **no asset ids** | There is no audio yet, and an invented `rbxassetid://` is a silent 404 that looks like working code. Slots are looked up by name in `SAD_Assets/Sounds`, so the audio pass is a folder of files rather than a code change — the same stance `AssetBuilder` takes for models | docs/15 §3 |
 | 56 | `EggCarryController`'s placeholder `Notify` handler removed | It was explicitly marked "Step 16's NotificationController takes this over". Two handlers on one remote renders everything twice | — |
+| 57 | Added `WeatherConfig` as config module #12, with mutation weights deliberately left out of it | Weights, durations and non-mutation effects have no home; mutation multipliers already have one in `MutationConfig.WeatherModifiers` and belong with the mutations. Splitting them is the thing deviation #5 warned about, so ConfigValidator rule 11 asserts the two tables name the same weathers at boot — the split is only safe because something checks it | docs/09 §1, docs/04 §2 |
+| 58 | Added `WeatherController` to the client roster (#18) | docs/09 §1's client list has no home for weather visuals, and docs/13 §Step 17 asks for them to be local: "the effects are server truth, only the visuals are local". Beyond trust, it bounds the hazard docs/13 names — Lighting driven from the server and left wrong is wrong for everyone until a restart; the same mistake locally corrects itself on rejoin. It also lets `Settings.LowGraphics` suppress fog per player, which a server-wide Lighting change cannot | docs/09 §1, docs/13 §Step 17 |
+| 59 | `MutationService.RollIn` and `.Roll` gained an optional `zoneId` | docs/04 §2's Blizzard is "Frozen ×25" everywhere and "Frozen Valley ×2" on top, so the roll has to know where the egg came from. Additive to a frozen API, like `params.Acquired` in Step 15. `IncubationService` passes the egg's `Origin`, not the player's position — a Valley egg carries the Valley's weather home with it | docs/04 §2 |
+| 60 | Added ConfigValidator **rule 11**: the two weather tables must agree | See #57. It also catches a modifier naming an unshipped mutation, and a weather with zero weight or no duration — each of which ships as a weather that silently does nothing | docs/11 §5 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 61 source files and runs **2,964
-assertions** outside Roblox. Last run: **2,964 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 64 source files and runs **3,049
+assertions** outside Roblox. Last run: **3,049 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -558,6 +601,7 @@ assertions** outside Roblox. Last run: **2,964 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step17_spec` (85) | The published weather table, the Clear share for V1 *and* for the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, Prime's chance proven flat while its count rises, and the two weather tables asserted to name the same set |
 | `step16_spec` (87) | All four severities against docs/08 §5, a strict and unique priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back *downward*, payload sanitising against nesting, functions, NaN, infinity, numeric keys and over-long keys, sanitiser idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own documented floor |
 | `step15_spec` (85) | The hold formula against docs/03 §4.2 including V1's real ceiling and the V1.4 arithmetic, shield stacking proven un-permanent under fifty grants, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property with its rollback, vault slots, carry weight, and every published cooldown |
 | `step14_spec` (76) | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside the zone they travel to, zone-square clearance against the park ring, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim against the published income curve |
@@ -807,6 +851,43 @@ Bugs the specs caught before they shipped:
     `SAD_Assets/Sounds` and the boot line says `Ready, silent` with a count.
     The audio handover is then a folder of files with the right names, and the
     absence is visible in the log rather than inferred from the quiet.
+
+26. **The published 45% Clear share needs all eleven weathers.** docs/04 §2
+    weights Clear "so that roughly 45% of the time nothing special is
+    happening". That is exact — 4,500 against 5,500 of exotic weight — across
+    the full table. V1 ships three exotics summing to 2,950, so **Clear is
+    60%**.
+
+    Same shape as Step 15's raid hold ceiling: neither the document nor the
+    config is wrong, they describe different content sets. And here the V1
+    number is arguably the better one — with only three exotics to draw from,
+    seeing one every other roll is what would stop them feeling special. The
+    weights are unchanged, so shipping the remaining seven restores 45%
+    exactly. Both numbers are asserted, so the day the table fills out this
+    fails and gets updated rather than drifting.
+
+27. **"Prime chance is never modified by weather" is about the chance, not the
+    count — and my first test measured the count.** It failed: 2 Primes in
+    clear against 8 in a thunderstorm over 40,000 rolls, which looked like
+    weather leaking into Prime.
+
+    It is not. Prime is only rolled once a mutation has already landed, so a
+    weather that doubles the mutation rate doubles the number of rolls that
+    reach the Prime check while leaving the 1-in-2,000 untouched. The count
+    *should* rise. Re-measured as a conditional rate over 300,000 rolls:
+    1 in 1,927 in clear and 1 in 1,994 in a thunderstorm. Both halves are now
+    asserted — that the count rises, and that the rate does not — because
+    asserting only one of them is how this misread happened in the first place.
+
+28. **The ×40 mutation cap had nothing to do in V1 until it did.** V1's largest
+    weather modifier is Frozen at ×25, comfortably under the cap, so nothing
+    would ever have exercised it — a limit that never binds is a limit nobody
+    notices has stopped working.
+
+    docs/04 §2's Blizzard row also says "Frozen Valley ×2", which is the one
+    V1 interaction that reaches it: ×25 → ×50 → trimmed to ×40. Implementing
+    that reading gives the cap a job and makes it measurable: 34% Frozen in a
+    blizzard elsewhere against 45% in the Valley, where uncapped would be 55%.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

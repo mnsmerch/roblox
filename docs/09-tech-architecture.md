@@ -23,7 +23,8 @@ ReplicatedStorage
     │   ├── ZoneConfig               (ModuleScript)  10 zones, nests, unlock gates
     │   ├── UpgradeConfig            (ModuleScript)  18 tracks
     │   ├── RebirthConfig            (ModuleScript)  costs, keeps, grants
-    │   ├── WeatherConfig            (ModuleScript)  11 weathers
+    │   ├── WeatherConfig            (ModuleScript)  11 weathers (4 in V1); mutation
+    │   │                                            weights stay in MutationConfig
     │   ├── EventConfig              (ModuleScript)  12 server events
     │   ├── QuestConfig              (ModuleScript)  daily + weekly pools
     │   ├── DailyConfig              (ModuleScript)  7-day + streak table
@@ -77,7 +78,7 @@ ServerScriptService
         ├── DinosaurService          hatch rolls, ownership, place/store/sell/fuse
         ├── MutationService          mutation rolls, weather modifiers, reroll
         ├── StealService             raid state machine, tagging, shields, insurance
-        ├── WeatherService           weather selection + broadcast
+        ├── WeatherService           selection, effects; visuals are the client's
         ├── EventService             server event scheduler + participation
         ├── QuestService             daily/weekly progress
         ├── DailyService             7-day rewards, streaks
@@ -114,6 +115,7 @@ StarterPlayer
             ├── QuestController
             ├── TeleportController   the zone wheel and PARK teleport
             ├── MinimapController
+            ├── WeatherController    Lighting, locally, so it always reverts
             ├── TutorialController
             └── SettingsController
 

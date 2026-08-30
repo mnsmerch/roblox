@@ -73,6 +73,9 @@ NestService.PickupRequested = Signal.new()
 		                  Offset: Vector3, RefillAt: number? } },
 	}
 ]]
+--- Resolved at Start; see NestService.RespawnMultiplier.
+local WeatherService = nil
+
 local nests: { [string]: any } = {}
 local nestsByZone: { [string]: { any } } = {}
 
@@ -162,7 +165,13 @@ function NestService.ClaimEgg(player: Player, nestId: string, slotIndex: number)
 	local model = slot.Model
 	slot.Model = nil
 	slot.Prompt = nil
-	slot.RefillAt = os.clock() + nest.RespawnSecs
+	--[[
+		Weather can shorten a respawn (Rainstorm is 25% faster, docs/04 §2).
+		Read at the moment the timer is SET rather than when it fires, so a
+		weather that ends mid-timer does not retroactively lengthen an egg
+		that was already on its way back.
+	]]
+	slot.RefillAt = os.clock() + nest.RespawnSecs * NestService.RespawnMultiplier()
 	model:Destroy()
 
 	Log.debug("NestService", "%s took %s slot %d", player.Name, nestId, slotIndex)
@@ -194,6 +203,21 @@ local function refillSlot(nest, slotIndex: number)
 	end)
 
 	NestService.NestRefilled:Fire(nest, slotIndex)
+end
+
+--[[
+	The weather's effect on respawn time, as a multiplier. 1 when nothing
+	applies, so the caller multiplies unconditionally.
+
+	WeatherService is resolved lazily rather than in Init, because NestService
+	loads before it in the roster and a hard dependency would invert the order
+	for one number.
+]]
+function NestService.RespawnMultiplier(): number
+	if not WeatherService then
+		return 1
+	end
+	return WeatherService.EffectOf("NestRespawnMult", 1)
 end
 
 local function tickRespawns()
@@ -302,6 +326,14 @@ function NestService.Init(app)
 end
 
 function NestService.Start(app)
+	--[[
+		Resolved here rather than in Init: WeatherService loads after this one.
+		Guarded, because a service that is not built yet must not break one
+		that is - the whole roster is designed to light up step by step.
+	]]
+	local hasWeather, weather = pcall(app.Get, "WeatherService")
+	WeatherService = if hasWeather then weather else nil
+
 	--[[
 		Discovered by tag, not from WorldBuilder's return value. Generated and
 		hand-placed anchors are then indistinguishable, which is what lets a

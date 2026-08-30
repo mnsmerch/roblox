@@ -251,7 +251,9 @@ function IncubationService.Claim(player: Player, slotIndex: number): (boolean, s
 		return false, "no species available"
 	end
 
-	local mutation, mutation2 = MutationService.Roll(player)
+	-- The egg's origin zone, so weather that is worse in one place follows the
+	-- egg rather than the player (docs/04 §2, Blizzard's "Frozen Valley x2").
+	local mutation, mutation2 = MutationService.Roll(player, slot.Origin)
 
 	local uid, entry, reason = DinosaurService.Create(player, {
 		SpeciesId = speciesId,

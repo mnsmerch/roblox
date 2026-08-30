@@ -97,6 +97,24 @@ feel special). Duration 4–7 minutes for exotic weather, then a forced ≥ 3 mi
 Weather is **server-wide and identical for everyone** — that's what makes it
 social. Announced with a 20-second countdown banner and a distinct sting.
 
+> **V1 ships four of the eleven: Clear, Rainstorm, Thunderstorm, Blizzard.**
+> The 45 % Clear share above is exact across the full table (4,500 against
+> 5,500 of exotic weight). With three exotics summing to 2,950, V1's Clear
+> share is **60 %** — and that is the right direction, not a compromise: with
+> only three exotics to draw from, seeing one every other roll is what would
+> stop them feeling special. The weights themselves are unchanged, so adding
+> the remaining seven restores 45 % exactly.
+>
+> **The ×40 cap has exactly one V1 interaction**, and it is Blizzard's
+> "Frozen Valley ×2": Frozen goes ×25 → ×50 → trimmed to ×40. Measured through
+> real rolls in `tests/step17_spec.lua`, that is a 34 % → 45 % share rather than
+> the 34 % → 55 % an uncapped boost would give.
+>
+> **"Prime chance is never modified by weather" is about the chance, not the
+> count.** Prime is only rolled once a mutation has landed, so a stormy server
+> genuinely produces about twice as many Primes while the 1-in-2,000 is
+> untouched. Both halves are asserted.
+
 **Interaction rule:** weather multiplies mutation *weights* before luck is
 applied, then everything renormalises. Weather cannot exceed a `×40` cap on any
 single mutation, and Prime chance is never modified by weather.

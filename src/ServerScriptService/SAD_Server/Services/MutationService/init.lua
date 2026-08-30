@@ -40,6 +40,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local MutationConfig = require(Shared.Config.MutationConfig)
+local WeatherConfig = require(Shared.Config.WeatherConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local Log = require(Shared.Modules.Log)
@@ -96,7 +97,8 @@ end
 
 	Returns (mutationId, secondMutationId?). `none` is a real result, not a nil.
 ]]
-function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: Random?): (string, string?)
+function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: Random?,
+	zoneId: string?): (string, string?)
 	local generatorToUse = generator or rng
 
 	local weights = MutationConfig.RollableWeights()
@@ -104,6 +106,22 @@ function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: 
 	-- Weather first: it shapes the pool, luck then shapes the player's share.
 	local modifiers = MutationConfig.WeatherModifiers[weatherId or "clear"]
 	if modifiers and next(modifiers) then
+		--[[
+			Some weather is worse in some places: docs/04 §2's Blizzard is
+			"Frozen x25" everywhere and "Frozen Valley x2" on top. The boost
+			multiplies the weather's own modifier, and WeatherModifierCap then
+			trims the result - Frozen goes 25 -> 50 -> 40, which is the x40 cap
+			doing the job it was written for rather than sitting unreached.
+		]]
+		local boost = WeatherConfig.ZoneBoost(weatherId, zoneId)
+		if boost ~= 1 then
+			local boosted = {}
+			for id, multiplier in modifiers do
+				boosted[id] = multiplier * boost
+			end
+			modifiers = boosted
+		end
+
 		weights = RNG.ApplyModifiers(weights, modifiers, MutationConfig.WeatherModifierCap)
 	end
 
@@ -138,10 +156,14 @@ function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: 
 	return primary, secondary
 end
 
-function MutationService.Roll(player: Player): (string, string?)
+--- `zoneId` is where the EGG came from, not where the player is standing:
+--- a Frozen Valley egg carries the Valley's weather boost home with it.
+function MutationService.Roll(player: Player, zoneId: string?): (string, string?)
 	return MutationService.RollIn(
 		MutationService.ComputeMutLuck(player),
-		currentWeather
+		currentWeather,
+		nil,
+		zoneId
 	)
 end
 

@@ -3,7 +3,7 @@
 	ConfigValidator
 	ReplicatedStorage/SAD_Shared/Config/ConfigValidator  (ModuleScript)
 
-	Runs at boot, before any service loads. Implements the ten rules in
+	Runs at boot, before any service loads. Implements the content rules in
 	docs/11-content-config.md §8.
 
 	The point: content bugs in a game like this are SILENT. A zone that can roll
@@ -428,12 +428,13 @@ local RULES = {
 	ruleEventHandlers,
 	ruleUpgradeEffects,
 	ruleProductIds,
+	ruleWeatherTables,
 	ruleStructural,
 }
 
 --[[
 	`configs` needs at minimum: Rarity, Mutation, Dino, Zone, Upgrade.
-	Optional: Event, EventHandlers, Product, Assets, UpgradeHandlers.
+	Optional: Event, EventHandlers, Product, Assets, UpgradeHandlers, Weather.
 ]]
 function ConfigValidator.Run(configs)
 	local report = newReport()
