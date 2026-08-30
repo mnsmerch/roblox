@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 42 source files and runs **1,920 assertions**: the economy
+Syntax-checks all 44 source files and runs **2,194 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -143,9 +143,11 @@ top-left and five buttons along the bottom.
 | Carry weight | A Titan egg drops you from 20 to 11 studs/s |
 | Loose eggs | Press Q — anyone can grab it for 10 seconds |
 | Anti-cheat | Set your own WalkSpeed and get flagged, dropped, snapped back |
+| **The chase** | A dinosaur wakes, roars, and runs you down. Escape or trip over |
+| Zone difficulty | Frozen Valley guardians genuinely catch you; Jurassic Plains ones mostly do not |
 
-**Not built yet:** chases, hatching, income, upgrades, stealing from players.
-Steps 9–24. The bottom-bar buttons log `No screen registered` —
+**Not built yet:** depositing, hatching, income, upgrades, stealing from
+players. Steps 10–24. The bottom-bar buttons log `No screen registered` —
 that warning is correct, the screens arrive in Step 13.
 
 ---

@@ -22,6 +22,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
+local ChaseConfig = require(Shared.Config.ChaseConfig)
 local DinoConfig = require(Shared.Config.DinoConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
 local ZoneConfig = require(Shared.Config.ZoneConfig)
@@ -37,10 +38,11 @@ NestBuilder.PromptHoldSecs = 0.6 -- docs/03 §1.1
 --[[
 	Which species guards this nest.
 
-	Drawn from the zone's COMMON, UNCOMMON and RARE species only. A Titan Rex
-	standing over a Zone 1 nest would be absurd, and more practically it would
-	misprice the risk: the sign is a promise about how hard the escape will be,
-	and the guardian is not related to what the egg turns out to be.
+	Drawn from the zone's COMMON, UNCOMMON and RARE species whose chase
+	archetype can actually operate on land. A Titan Rex standing over a Zone 1
+	nest would be absurd, and more practically it would misprice the risk: the
+	sign is a promise about how hard the escape will be, and the guardian is not
+	related to what the egg turns out to be.
 
 	Seeded from the nest's identity, so a nest keeps its guardian across
 	sessions and players learn which nests are worth the trip.
@@ -49,7 +51,17 @@ function NestBuilder.PickGuardian(zoneId: string, nestIndex: number): string?
 	local candidates = {}
 	for _, rarityId in { "common", "uncommon", "rare" } do
 		for _, speciesId in DinoConfig.SpeciesFor(zoneId, rarityId) do
-			table.insert(candidates, speciesId)
+			--[[
+				Only archetypes that can actually chase on land.
+
+				A Plesiosaurus cannot leave water, and there is no water in the
+				blockout - it would stand motionless beside a nest. That is not
+				a chase, it is a bug that renders as a statue.
+			]]
+			local species = DinoConfig.Get(speciesId)
+			if species and ChaseConfig.CanGuard(species.ChaseArchetype) then
+				table.insert(candidates, speciesId)
+			end
 		end
 	end
 	if #candidates == 0 then

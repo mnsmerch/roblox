@@ -49,6 +49,7 @@ local chips = {}
 local buttons = {}
 local actionPrompt
 local carryPanel
+local chaseBanner, chaseVignette
 local compass, eventBanner
 local railToggle
 
@@ -280,6 +281,53 @@ local function buildCarryPanel()
 	carryPanel.Distance = distanceLabel
 end
 
+--[[
+	The chase readout: a red tint and one loud line.
+
+	During a chase the HUD strips down to what a running player can actually
+	use (docs/00 §6). The vignette pulses with proximity rather than sitting
+	still, because a static red overlay stops being information after a second.
+]]
+local function buildChase()
+	chaseVignette = Create("Frame", {
+		Name = "ChaseVignette",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Theme.Color.Danger,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = Theme.Layer.Hud - 1,
+		Parent = hud,
+	})
+
+	local label = Create("TextLabel", {
+		Name = "Label",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Display,
+		TextSize = Theme.TextSize.Display,
+		TextColor3 = Theme.Color.Text,
+		Text = "",
+		ZIndex = Theme.Layer.Prompt + 2,
+	})
+
+	chaseBanner = Widgets.Panel({
+		Name = "ChaseBanner",
+		Size = UDim2.new(0, 460, 0, 54),
+		Position = UDim2.new(0.5, 0, 0, Theme.Size.TopBarHeight + Theme.Space.XXL),
+		AnchorPoint = Vector2.new(0.5, 0),
+		Color = Theme.Color.Danger,
+		Transparency = 0.2,
+		StrokeColor = Theme.Color.Danger,
+		Visible = false,
+		ZIndex = Theme.Layer.Prompt + 1,
+		Children = { label },
+		Parent = UIController.Layer("prompt"),
+	})
+
+	chaseBanner.Label = label
+end
+
 local function buildRailToggle()
 	-- Below RailCollapseWidth the left rail folds behind one button
 	-- (docs/08 §4). Four extra icons is exactly what a 5.5" screen cannot
@@ -423,6 +471,40 @@ function HUDController.SetCarry(info)
 	end
 end
 
+--[[
+	Shows or hides the chase readout.
+
+	`info` nil ends it. Otherwise: { DisplayName, Caught }. Also strips the HUD,
+	because nothing may block a chase.
+]]
+function HUDController.SetChase(info)
+	if not info then
+		chaseBanner.Visible = false
+		chaseVignette.Visible = false
+		HUDController.SetChaseMode(false)
+		return
+	end
+
+	HUDController.SetChaseMode(true)
+	chaseBanner.Visible = true
+	chaseVignette.Visible = true
+
+	if info.Caught then
+		chaseBanner.Label.Text = "CAUGHT!"
+	else
+		chaseBanner.Label.Text = string.format("RUN! %s", string.upper(info.DisplayName or "SOMETHING"))
+	end
+end
+
+--- Pulse strength for the chase vignette, 0 (far) to 1 (about to be caught).
+function HUDController.SetChaseProximity(fraction: number)
+	if not chaseVignette.Visible then
+		return
+	end
+	-- Never fully opaque: the player still has to see where they are running.
+	chaseVignette.BackgroundTransparency = 0.95 - math.clamp(fraction, 0, 1) * 0.25
+end
+
 function HUDController.SetCompass(text: string?)
 	compass.Text = text or ""
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
@@ -457,6 +539,7 @@ function HUDController.Init(app)
 	buildRailToggle()
 	buildActionPrompt()
 	buildCarryPanel()
+	buildChase()
 
 	Log.info("HUDController", "HUD built")
 end

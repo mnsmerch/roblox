@@ -306,6 +306,21 @@ with placeholder models.
 
 ---
 
+## Step 9 — the chase
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/ChaseConfig` | `src/.../Config/ChaseConfig.lua` *(new)* |
+| `Services/WildAIService` | `src/.../WildAIService/init.lua` *(new)* |
+| `SAD_Client/Controllers/CameraController` | `src/.../Controllers/CameraController.lua` *(new)* |
+| `SAD_Shared/Config/ZoneConfig` | *(re-paste — `GuardianSpeedBonus`)* |
+| `Services/EggService` | *(re-paste — speed modifiers)* |
+| `Services/NestService/NestBuilder` | *(re-paste — guardian eligibility filter)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — chase banner + vignette)* |
+| `SAD_Client/Controllers/EggCarryController` | *(re-paste — chase handling)* |
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -948,9 +963,85 @@ trade.
 
 ---
 
+## Step 9 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][WildAIService] Chase AI ready: decisions at 6 Hz, cap 20 guardians
+[SAD/C][CameraController] Camera shake ready
+```
+
+**2. Get chased.** Take an egg in Jurassic Plains. A dinosaur spawns at the
+nest and comes after you. The HUD strips to a red vignette and `RUN!
+PARASAUROLOPHUS`, the camera shakes, and the vignette **pulses harder as it
+closes**.
+
+```
+[SAD/S][WildAIService] YourName is being chased by a parasaurolophus in plains
+                       (18.4 studs/s vs their 20.0)
+```
+
+Note the speed: it is a ratio of *your* speed at the moment you grabbed the egg.
+
+**3. Escape.** Three ways, all real:
+- Run to **your own park gate** → `reached safety`
+- Leave the zone and stay out **8 seconds** → `lost them outside the zone`
+- Get **250 studs from the nest** → `too far from the nest`
+- Or just outlast it — most Zone 1 guardians give up
+
+**4. Get caught.** Stand still. You trip over, go limp for 1.5 s, are winded
+(−25 % speed) for 6 s, and **every egg you were carrying lands on the ground**
+where anyone can take it for 10 seconds. Nothing is destroyed and nothing is
+deducted.
+
+**5. Feel the difficulty curve.** Unlock Frozen Valley and steal there:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+PDS.UpdateKeys(p, { "ZonesUnlocked" }, function(d) d.ZonesUnlocked.frozen = true end, "test")
+```
+
+Zone 4 guardians carry a **+0.12 speed bonus**. Running in a straight line is no
+longer enough — 10 of 13 archetypes will run you down there, against 3 of 13 in
+Jurassic Plains.
+
+**6. Watch an ability.** Find a Pachycephalosaurus (charger) or Dilophosaurus
+(spitter) nest. Seven seconds into the chase the guardian **winds up** — it
+visibly slows, the camera jolts — and then charges at 1.8×. The wind-up is your
+cue to turn sideways.
+
+**7. The cap.**
+
+```lua
+local AI = require(game.ServerScriptService.SAD_Server.Services.WildAIService)
+print("active chases:", AI.GetActiveCount())
+```
+
+At 20 concurrent chases a new steal recycles the longest-running one — whoever
+has been running longest gets away.
+
+**8. Guardians never enter parks.** Run into *another* player's park while
+chased. The guardian stops at their gate. You are safe from it — and standing in
+someone else's park.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| No guardian appears | `WildAIService` not pasted, or the nest has no `GuardianSpeciesId` |
+| Guardian stands still | Its archetype cannot guard — `NestBuilder` not re-pasted |
+| Guardian floats or sinks | Ground raycast hitting a runtime folder; check the filter in `Init` |
+| Caught instantly | `LastAbilityAt` not seeded to `os.clock()` — abilities must wait one cooldown |
+| Chase never ends | Check Output for the reason; every ending is logged |
+| Camera does not shake | `CameraShake` setting off, or `CameraController` missing |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,920 assertions** without Studio:
+Syntax-checks every source file and runs **2,194 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -968,6 +1059,7 @@ Fetches the Luau CLI on first run.
 | `tests/step6_spec.lua` | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap, and the plot depth budget |
 | `tests/step7_spec.lua` | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection and risk ratings |
 | `tests/step8_spec.lua` | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, rarity roll distributions, and the luck tail guard |
+| `tests/step9_spec.lua` | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

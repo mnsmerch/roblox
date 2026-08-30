@@ -30,6 +30,7 @@ ReplicatedStorage
     │   ├── ProductConfig            (ModuleScript)  gamepass + dev product ids
     │   ├── IndexConfig              (ModuleScript)  milestone rewards
     │   ├── ParkConfig               (ModuleScript)  plot geometry + grid maths
+    │   ├── ChaseConfig              (ModuleScript)  guardian archetype behaviour
     │   └── ConfigValidator          (ModuleScript)  boot-time content checks
     ├── Modules                      (Folder)
     │   ├── Types                    (ModuleScript)  Luau type exports
@@ -361,7 +362,7 @@ guardians.**
 |---|---|
 | Dinosaur count | Up to 30 placed dinos × 24 parks = 720. Park dinos are **not** Humanoids — they are Models with an animated `AnimationController` and a simple 3-state wander driven by a **single shared 2 Hz loop** that batches all parks |
 | Distant parks | `StreamingEnabled` + per-park `Model.LevelOfDetail`; beyond 250 studs a park renders a single impostor billboard of its skyline |
-| Guardian AI | Dormant until aggro. 6 Hz tick. Path recalc ≤ every 1.5 s. Hard cap 20 active; overflow becomes a client-only Ghost Chase |
+| Guardian AI | Dormant until aggro — an idle nest has no loop, no connection and no physics cost. **Decisions at 6 Hz, movement integrated every frame** from the last decision: steering six times a second looks like stop-motion, deciding sixty times a second costs sixty times as much for an answer that changes about as often as the player turns. Guardians are anchored and moved by CFrame rather than driven by Humanoids — the placeholder models have no rig, a Humanoid each would cost far more than the steering, and CFrame movement is unambiguously server-authoritative. Hard cap 20 active; at the cap a new steal **recycles the longest-running chase** |
 | Particles | Global `ParticleBudget`; rarity VFX auto-downgrade beyond 120 studs and are disabled entirely in Low Graphics Mode |
 | Remotes | 5 Hz coalesced state deltas; no per-frame remotes anywhere. Income floaters are generated client-side from a replicated rate, not sent per tick |
 | Income ticking | The server does **not** tick per dinosaur. It stores `bankedAt` + `ratePerSecond` and computes lazily on read. O(1) per player, not O(dinos) |

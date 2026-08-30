@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 8 of 24 complete.** Awaiting the Studio Play test before Step 9.
+## Status: **Step 9 of 24 complete.** Awaiting the Studio Play test before Step 10.
 
 ## Completed
 
@@ -19,6 +19,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 6** — park plots | 24 plots generated procedurally, 142 more assertions |
 | 2026-08-29 | **Step 7** — world, zones & nests | Hub + 4 zones + 48 nests generated, 356 more assertions |
 | 2026-08-30 | **Step 8** — egg pickup & carrying | Rarity roll, carry tokens, loose eggs, 96 more assertions |
+| 2026-08-30 | **Step 9** — guardian AI & the chase | 20 archetypes, zone difficulty curve, 274 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -32,7 +33,7 @@ accident. Updated at the end of every build step.
 | 6 | Park plots | ✅ **done** |
 | 7 | Nests & the world | ✅ **done** |
 | 8 | Egg pickup & carrying | ✅ **done** |
-| 9 | Guardian AI & the chase | ⬜ |
+| 9 | Guardian AI & the chase | ✅ **done** |
 | 10 | Safe zone & deposit | ⬜ |
 | 11 | Incubation & hatching | ⬜ |
 | 12 | Placement & income | ⬜ |
@@ -66,6 +67,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/RebirthConfig` | ModuleScript | Cost curve, preserved keys, permanent grants |
 | `Config/ConfigValidator` | ModuleScript | 10 content rules + 4 structural; aborts boot on error |
 | `Config/ParkConfig` | ModuleScript | Plot geometry, grid maths, visual tiers |
+| `Config/ChaseConfig` | ModuleScript | 20 guardian archetypes, chase tuning, the guardian cap |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -102,7 +104,18 @@ rebuilds this on every server start.
 | `Services/NestService/WorldBuilder` | ModuleScript | Hub plaza + 4 zone blockouts + tagged anchors |
 | `Services/NestService/NestBuilder` | ModuleScript | Nest bowl, generic eggs, risk/odds sign |
 | `Services/SecurityService` | ModuleScript | Rate-limit records, movement plausibility, distance checks |
-| `Services/EggService` | ModuleScript | Pickup, rarity roll, carry tokens, carry weight, loose eggs |
+| `Services/EggService` | ModuleScript | Pickup, rarity roll, carry tokens, carry weight, loose eggs, speed modifiers |
+| `Services/WildAIService` | ModuleScript | Guardian spawn, chase decisions, abilities, catching, de-aggro |
+
+```
+WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
+WildAIService.IsChasing(player) -> boolean
+WildAIService.GetActiveCount() -> number
+WildAIService.ChaseStarted / ChaseEnded / ThiefCaught   Signals
+
+EggService.SetSpeedModifier(player, key, multiplier, duration?)
+EggService.ClearSpeedModifier(player, key)
+```
 
 ```
 SecurityService.CheckDistance(player, position, range?) -> ok, reason?
@@ -205,7 +218,8 @@ client never hears about; there is no polling fallback by design.
 | `UIController` | ModuleScript | Owns `SAD_UI`, the 5 layers, scaling, one-screen-at-a-time |
 | `HUDController` | ModuleScript | Top bar, rails, bottom bar, action prompt, carry panel |
 | `InputController` | ModuleScript | Keyboard/gamepad/touch → named actions |
-| `EggCarryController` | ModuleScript | Reads carry state off the world; drives the carry panel |
+| `EggCarryController` | ModuleScript | Reads carry state off the world; carry panel and chase readout |
+| `CameraController` | ModuleScript | Camera shake, applied as an offset after Roblox's camera step |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -273,11 +287,15 @@ current value, then on every change at or under that path. No polling anywhere.
 | 22 | Carried eggs are **client**-owned physics, not server-owned as docs/09 §6 said | A part welded to a character joins that character's assembly; there is no way to keep server ownership. Safe because the model is cosmetic — the CarryToken is the only authority | docs/09 §6 |
 | 23 | Carry state reaches the client through **model attributes**, not a new remote | The welded model is already replicated to everyone, so observers get the rarity aura for free and there is no extra packet to keep in sync with the truth. Avoids adding to the frozen remote list | docs/09 §3 |
 | 24 | Nest prompts fire `NestService.PickupRequested` instead of claiming directly | Step 7 wired them straight to `ClaimEgg` as a standalone test. Claiming without minting a token destroys an egg and gives nothing, so the whole pickup belongs to `EggService` | — |
+| 25 | Guardians are **anchored and moved by CFrame**, not driven by `Humanoid:MoveTo` as docs/09 §6 said | The placeholder models have no rig, a Humanoid each costs far more than the steering does, and CFrame movement is unambiguously server-authoritative — no assembly whose ownership could drift to a client | docs/09 §6 |
+| 26 | The guardian cap **recycles the longest-running chase**; no client-side Ghost Chase | A cosmetic guardian that cannot catch anyone is a lie the player eventually notices. Recycling bounds cost identically, guarantees every steal gets a real guardian, and letting the player who has run longest get away is a gift rather than a punishment | docs/09 §6 |
+| 27 | Added `ZoneConfig.GuardianSpeedBonus` (+0.00 / +0.04 / +0.08 / +0.12) | Without it the risk skulls on a nest sign are decoration — see the finding below | docs/03 §2 |
+| 28 | Guardian archetypes carry `CanGuard`; swimmers and apex tiers are excluded | A Plesiosaurus guarding a land nest cannot leave water and would stand motionless beside it. That is not a chase, it is a statue, and nothing throws | docs/03 §3 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 42 source files and runs **1,920
-assertions** outside Roblox. Last run: **1,920 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 44 source files and runs **2,194
+assertions** outside Roblox. Last run: **2,194 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -289,6 +307,7 @@ assertions** outside Roblox. Last run: **1,920 passed, 0 failed.**
 | `step6_spec` (142) | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap at 24 and 48 plots, and the plot depth budget |
 | `step7_spec` (356) | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection, risk ratings |
 | `step8_spec` (96) | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, roll distributions, the luck tail guard |
+| `step9_spec` (274) | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 
 Bugs the specs caught before they shipped:
 
@@ -330,6 +349,31 @@ Bugs the specs caught before they shipped:
 9. Step 7 left nest prompts wired straight to `NestService.ClaimEgg`. Once
    Step 8 introduced carry tokens that became a bug that destroys an egg and
    hands the player nothing — the prompt now fires a signal `EggService` owns.
+
+10. **The chase did not work.** The Step 9 simulation showed that *no guardian
+    could catch a player running in a straight line* — every archetype ratio
+    sits at or below 1.04, and the two-second acceleration ramp costs more
+    ground than 1.04 recovers in forty seconds. Zone difficulty was purely
+    cosmetic: a Zone 4 chase was identical to a Zone 1 one. Three fixes, all
+    driven by the measurement:
+    - `ZoneConfig.GuardianSpeedBonus` scales guardians by zone, so the risk
+      skulls mean something.
+    - Ability **wind-ups** at 30 % speed — the tell that makes "dodge sideways"
+      possible, and the cost that keeps a 1.8× charge fair.
+    - Abilities wait **one full cooldown** before first use. A Charger that
+      charged on frame one closed an 18-stud head start in three seconds,
+      before the player had run anywhere.
+
+    Result: Zone 1 catches 3 of 13 fleeing thieves (17.5–26.4 s), Zone 4
+    catches 10 of 13 (9.6–19.5 s). Every one inside the 10–30 second window
+    docs/00 publishes.
+
+**Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
+partly from localised hazards — mud pools at −35 %, ice momentum. Those need
+real geometry that the blockout does not have, and a blanket zone-wide slow
+would do nothing, because guardian speed is sampled from the thief's already-
+slowed speed. So today the entire difficulty curve rests on
+`GuardianSpeedBonus`. The hazards pass is still owed.
 
 **One thing the specs surfaced that is worth knowing, not fixing:** with Mythic
 and Ancient zeroed for V1, the highest luck powers in play are Legendary and

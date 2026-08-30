@@ -79,8 +79,35 @@ Global tuning rules:
 
 - Guardian base speed is set **relative to the thief's current speed**, sampled
   at aggro, so upgrades never make chases trivial and low-level players are
-  never outrun instantly. `guardianSpeed = thiefSpeed * SpeedRatio` where
-  `SpeedRatio` is 0.88–1.06 by archetype.
+  never outrun instantly.
+  `guardianSpeed = thiefSpeed × (SpeedRatio + zone.GuardianSpeedBonus)`.
+- **The zone bonus is what makes the risk skulls mean anything.** Archetype
+  ratios all sit at or below ~1.04, and a two-second acceleration ramp costs
+  more ground than 1.04 recovers in forty seconds — so without it, a thief who
+  simply holds W is uncatchable in Frozen Valley exactly as they are in
+  Jurassic Plains. V1 bonuses: plains +0.00, canyon +0.04, swamp +0.08,
+  frozen +0.12.
+- **Abilities do not fire until one cooldown into the chase.** A Charger that
+  charges on frame one closes an 18-stud head start in three seconds — before
+  the player has run anywhere and before the wind-up can work as a tell.
+  Guardians run first, then use their trick.
+- **Every ability with a burst has a wind-up** at 30 % speed. That is
+  simultaneously the tell the player reacts to and the cost that keeps the
+  burst fair. A charge that begins instantly is not dodgeable, it is a tax.
+
+**Measured outcomes** (`tests/step9_spec.lua`, straight-line worst case with an
+18-stud head start, no cornering and no dropping):
+
+| | Zone 1 | Zone 4 |
+|---|---|---|
+| Guardians that catch a fleeing thief | **3 of 13** | **10 of 13** |
+| Fastest catch | 17.5 s | 9.6 s |
+| Slowest catch | 26.4 s | 19.5 s |
+
+Every one lands inside the 10–30 second chase window from
+[00-overview.md](00-overview.md) §2. Zone 1 is forgiving on purpose — a new
+player's first chase should be a thrill they win — and its threat comes from
+abilities rather than from being out-jogged.
 - Guardians accelerate over 2 s (they *lumber* into a run). This gives a
   guaranteed head start and reads as comedic.
 - A guardian that is > 120 studs behind gets a "rubber band" +15 % for 3 s so it

@@ -73,6 +73,18 @@ local carried: { [Player]: { [string]: any } } = {}
 --- Eggs lying in the world after a drop, grabbable by anyone for a few seconds.
 local loose: { [string]: any } = {}
 
+--[[
+	Temporary speed effects, keyed so each source owns exactly one.
+
+	modifiers[player][key] = { Multiplier, ExpiresAt }
+
+	Lives here because EggService already owns the one function that decides a
+	player's speed. A guardian's honk, a spitter's goo, being winded after a
+	trip, and Step 17's weather all multiply into the same place rather than
+	each writing WalkSpeed and clobbering the others.
+]]
+local modifiers: { [Player]: { [string]: any } } = {}
+
 local rng = RNG.new()
 local eggTemplates: Folder = nil
 local looseFolder: Folder = nil
@@ -210,6 +222,52 @@ function EggService.CarryPenaltyOf(penalties: { number }, strongBackMult: number
 	return math.clamp(total, 0, GameConfig.MaxCarryPenalty)
 end
 
+--[[
+	Applies a temporary speed effect. `key` identifies the source, so a second
+	honk refreshes the first rather than stacking into immobility.
+	`multiplier` below 1 slows; nil duration means it lasts until cleared.
+]]
+function EggService.SetSpeedModifier(player: Player, key: string, multiplier: number, duration: number?)
+	local held = modifiers[player]
+	if not held then
+		held = {}
+		modifiers[player] = held
+	end
+
+	held[key] = {
+		Multiplier = multiplier,
+		ExpiresAt = if duration then os.clock() + duration else math.huge,
+	}
+	EggService.ApplySpeed(player)
+end
+
+function EggService.ClearSpeedModifier(player: Player, key: string)
+	local held = modifiers[player]
+	if held and held[key] then
+		held[key] = nil
+		EggService.ApplySpeed(player)
+	end
+end
+
+--- Product of every live modifier, dropping any that have expired.
+local function modifierProduct(player: Player): number
+	local held = modifiers[player]
+	if not held then
+		return 1
+	end
+
+	local now = os.clock()
+	local product = 1
+	for key, entry in held do
+		if now >= entry.ExpiresAt then
+			held[key] = nil
+		else
+			product *= entry.Multiplier
+		end
+	end
+	return product
+end
+
 --- Re-applies WalkSpeed and tells SecurityService what to measure against.
 local function applySpeed(player: Player)
 	local character = player.Character
@@ -221,6 +279,7 @@ local function applySpeed(player: Player)
 
 	local speed = GameConfig.BaseWalkSpeed * speedMult * (1 + rebirthBonus)
 	speed *= (1 - EggService.GetCarryPenalty(player))
+	speed *= modifierProduct(player)
 
 	if humanoid then
 		humanoid.WalkSpeed = speed
@@ -645,7 +704,35 @@ function EggService.Start(app)
 	PlayerDataService.ProfileUnloading:Connect(function(player)
 		EggService.ResolveTokens(player)
 	end)
-	Players.PlayerRemoving:Connect(EggService.ResolveTokens)
+	Players.PlayerRemoving:Connect(function(player)
+		EggService.ResolveTokens(player)
+		modifiers[player] = nil
+	end)
+
+	--[[
+		Modifiers expire on their own clock, but WalkSpeed only changes when
+		something recomputes it. Without this sweep a honk would keep a player
+		slowed until the next time they happened to pick up or drop an egg.
+	]]
+	task.spawn(function()
+		while true do
+			task.wait(0.25)
+
+			local now = os.clock()
+			for player, held in modifiers do
+				local expired = false
+				for key, entry in held do
+					if now >= entry.ExpiresAt then
+						held[key] = nil
+						expired = true
+					end
+				end
+				if expired and player.Parent then
+					applySpeed(player)
+				end
+			end
+		end
+	end)
 
 	-- A carried egg does not survive a respawn: the model was welded to a
 	-- character that no longer exists.
