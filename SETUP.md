@@ -632,6 +632,40 @@ of them stops receiving receipts and Robux is lost.
 
 ---
 
+## Step 22 — leaderboards
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/LeaderboardConfig` | `src/.../Config/LeaderboardConfig.lua` *(new)* |
+| `Services/LeaderboardService` | `src/.../Services/LeaderboardService/init.lua` *(new)* |
+| `SAD_Client/Controllers/LeaderboardController` | `src/.../Controllers/LeaderboardController.lua` *(new)* |
+| `SAD_Shared/Modules/Economy` | *(re-paste — `MaxFossils` is now 2^53)* |
+| `Services/EconomyService` | *(re-paste — records `Stats.PeakIncomePerSec`)* |
+| `Services/NestService/WorldBuilder` | *(re-paste — the Colosseum)* |
+| `SAD_Client/Bootstrap` | *(re-paste — `LeaderboardController` in the roster)* |
+
+`LeaderboardController` is **new to the client roster** — re-paste the client
+`Bootstrap` or it will never load. The 🏆 rail button has existed since Step 5
+and does nothing until it does.
+
+**Re-paste `WorldBuilder` before playing.** The Colosseum is generated, so an
+old `SAD_World` in the place file will not have it. Delete `Workspace →
+SAD_World` once and let it rebuild; `NestService` regenerates the whole hub.
+
+### Studio API Services
+
+Leaderboards need DataStore access, which Studio does not have by default:
+
+**Game Settings → Security → Enable Studio Access to API Services**, on.
+
+Without it `LeaderboardService` logs a warning per board at boot, the boards
+stay empty, and everything else in the game works exactly as before — the same
+stance `ProductConfig` takes towards an unconfigured asset id. Note that the
+values you write from Studio go to the **live** OrderedDataStores, so a test
+park worth a trillion Fossils will appear on the real board.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -644,7 +678,7 @@ Press **Play**. The Output window should show, in order:
 [SAD/S] ======== Server boot complete (N ms) ========
 [SAD/C] ======== Steal a Dinosaur v0.1.0 client starting ========
 [SAD/C][Net] Connected to remote tree
-[SAD/C][Boot] Not built yet (20): StateController, SoundController, ...
+[SAD/C][Boot] Not built yet (21): StateController, SoundController, ...
 [SAD/C][Boot] Loaded 0 controller(s):
 [SAD/C] ======== Client boot complete (N ms) ========
 ```
@@ -2638,9 +2672,108 @@ the banner clears itself.
 
 ---
 
+## Step 22 test
+
+Needs **Studio Access to API Services** on — see the install section above.
+
+**1. Boot.** Play. The new line:
+
+```
+[SAD/S][LeaderboardService] Ready. 4 board(s), reads every 60s (4.0/min of 7),
+    writes <= 0.8/min of 70
+[SAD/C][LeaderboardController] Ready. 4 board(s), 3 statue(s)
+```
+
+Those are the real budget numbers for the player count in the session, not
+constants — `LeaderboardConfig.BudgetCheck` computes them. Without API Services
+you get four warnings instead and empty boards, which is the correct behaviour
+rather than a failure.
+
+**2. The Colosseum.** Walk west from the plaza. Four slate pillars in an arc at
+radius 250, three gold plinths inside them at 195. The pillars show the top ten
+of each board; the plinths show the top three of Richest with their avatars.
+
+An empty store reads **NO DATA YET** and **VACANT**, not a blank slab.
+
+**3. The screen.** 🏆 on the right rail. Four tabs, your line pinned at the
+bottom. Fresh stores are empty; force a write and a read to fill them:
+
+```lua
+local LB = require(game.ServerScriptService.SAD_Server.Services.LeaderboardService)
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+
+PDS.Update(p, function(d) d.Fossils = 5000000 end, "test")
+print(LB.FlushPlayer(p))     -- number of boards actually written
+LB.RefreshNow()              -- skip the 60s wait
+```
+
+Reopen the screen. You are #1 on RICHEST, and the pinned line reads `#1`.
+
+**4. The throttle.** The expensive bug docs/13 warns about. Change a value
+repeatedly and watch that only the first write goes out:
+
+```lua
+for i = 1, 20 do
+    PDS.Update(p, function(d) d.Fossils = 5000000 + i end, "test")
+    print(i, LB.FlushPlayer(p))   -- 1 the first time, 1 after each change
+end
+```
+
+`FlushPlayer` deliberately bypasses the 5-minute throttle (it exists for
+PlayerRemoving), so what this shows is the **changed check**: one write per
+board that actually moved, never four. In normal play the throttle on top of it
+means an earning player costs 15 requests an hour.
+
+**5. Outside the top 100.** The honest answer, and the one thing here that
+cannot be fixed with better code — `OrderedDataStore` has no rank query:
+
+```lua
+print(LB.SelfEntry(p, "richest"))   -- { Value = …, Rank = 1 }
+print(LB.SelfEntry(p, "rebirths"))  -- Rank = nil if you are not in the page
+```
+
+A nil Rank draws as `—  YOU · OUTSIDE THE TOP 100` with the value beside it.
+Never an estimated number.
+
+**6. Highest Income survives selling your park.** The board reads peak, not
+current, so funding a rebirth must not drop you off it:
+
+```lua
+local Econ = require(game.ReplicatedStorage.SAD_Shared.Modules.Economy)
+local LBC = require(game.ReplicatedStorage.SAD_Shared.Config.LeaderboardConfig)
+print(PDS.Get(p).Stats.PeakIncomePerSec)      -- non-zero once a dino is placed
+-- sell or unplace everything, then:
+print(Econ.ParkIncomeRate(PDS.Get(p)))        -- 0
+print(LBC.ValueFor("income", PDS.Get(p)))     -- still the peak
+```
+
+If `PeakIncomePerSec` is 0 with a placed dinosaur, `EconomyService.SettleBank`
+is not recording it — that was finding 38.
+
+**7. Two players and the statues.** **Test → Clients and Servers → 2 players**.
+Give them different balances, flush both, refresh. The plinths fill in rank
+order, tallest in the middle for first place, with avatar headshots fetched by
+`Players:GetUserThumbnailAsync`. A failed thumbnail leaves a gold block with a
+name on it, which is still readable.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Every player ties at zero on Highest Income | `Stats.PeakIncomePerSec` never written — finding 38 |
+| DataStore budget warnings in Output | Something writing per change rather than per throttle tick |
+| A rank appears for a player outside the page | Something inventing one; there is no rank API |
+| The boards are empty and no warning | API Services on but the read loop never started — check `LeaderboardService` is in the server roster |
+| Four warnings at boot, empty boards | API Services off. Correct behaviour, not a failure |
+| Deep-rebirth players all tie at the top | The 2^53 ceiling — expected above rebirth 15, see finding 39 |
+| The Colosseum is missing | An old `SAD_World` in the place file; delete it and let `NestService` rebuild |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,718 assertions** without Studio:
+Syntax-checks every source file and runs **3,831 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2670,6 +2803,7 @@ Fetches the Luau CLI on first run.
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
+| `tests/step22_spec.lua` | The four V1 boards against docs/12's list and docs/10 §4's store names, every board's value read off a profile, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against 14,400, the rank contract outside the top 100, and the Colosseum's geometry at 1, 4 and 8 pillars |
 | `tests/step21_spec.lua` | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; no asset id invented, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches and against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; VIP's offline rate through to the hourly payout; and both store orders proven to cover the catalogue exactly once |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both

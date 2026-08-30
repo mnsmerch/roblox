@@ -31,9 +31,24 @@ local Stats = require(Shared.Modules.Stats)
 
 local Economy = {}
 
---- Fossils are stored as Lua doubles, exact to 2^53. The rebirth curve is meant
---- to keep players far below this; the clamp is a safety net, not a feature.
-Economy.MaxFossils = 1e30
+--[[
+	Fossils are stored as Lua doubles, which represent every integer exactly up
+	to 2^53 and none of them after that.
+
+	This used to be 1e30, which is fifteen orders of magnitude past the point
+	where the arithmetic stops working - so the "safety net" caught nothing the
+	comment above it claimed to care about. A balance of 1e20 does not overflow;
+	it silently stops counting, so earning a Fossil changes nothing and a player
+	watches a frozen number.
+
+	2^53 is where the clamp belongs, and it is the same ceiling
+	`LeaderboardConfig.MaxValue` uses for the same reason (kept as a literal in
+	both because LeaderboardConfig is deliberately dependency-free; the specs
+	assert the two agree). Its consequence is recorded rather than hidden: it
+	puts an effective floor under rebirth 16, whose 1.37e16 cost is past this
+	line. See PROGRESS.md finding 39.
+]]
+Economy.MaxFossils = 2 ^ 53
 
 --- Offline earns this share of the active rate (docs/05 §4). VIP raises it to
 --- 1.0 in Step 21. Deliberately below 1 so an idle player progresses at well

@@ -78,7 +78,7 @@ The only element that changes. States:
 | **Quests** | Daily (3) and Weekly (3) cards with progress bars and a claim button |
 | **Daily** | 7 chest tiles in a row; today's pulses |
 | **Rebirth** | Big preview of "what you keep / what you lose / what you gain", one confirm |
-| **Leaderboards** | 8 tabs, top 100 each, your rank pinned at the bottom |
+| **Leaderboards** | 8 tabs, top 100 each, your rank pinned at the bottom (**V1: 4 tabs**; tab width is derived from the board count). A player inside the cached top 100 sees their real rank; one outside it sees their value and *outside the top 100* — `OrderedDataStore` has no rank query and an estimated rank would move when nothing about the player did |
 | **Settings** | Sliders and toggles, one column |
 
 ## 4. Platform specifics

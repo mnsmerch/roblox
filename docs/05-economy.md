@@ -161,7 +161,28 @@ rebirthCost(n) = 250,000 * 5.2^(n-1)     -- Fossils, must also own n+2 dinosaurs
 | 5 | 183 M | ~14 h |
 | 8 | 25.7 B | ~2.5 days |
 | 12 | 18.8 T | ~1 week |
-| 20 | 5.4 × 10¹⁹ | ~1 month |
+| 15 | 2.64 × 10¹⁵ | — |
+| 16 | 1.37 × 10¹⁶ | **past the number system — see below** |
+| 20 | 1.00 × 10¹⁹ | ~1 month |
+
+*(The rebirth-20 row read 5.4 × 10¹⁹ until Step 22. That is 250,000 × 5.2²⁰;
+the formula above says 5.2ⁿ⁻¹, so rebirth 20 is 250,000 × 5.2¹⁹ = 1.00 × 10¹⁹.
+The row applied the exponent as n rather than n − 1.)*
+
+**The curve outgrows the number system at rebirth 16.** Fossils are Lua doubles,
+which represent every integer exactly up to 2^53 ≈ 9.01 × 10¹⁵ and none after
+it. Rebirth 15 costs 2.64 × 10¹⁵ and fits; rebirth 16 costs 1.37 × 10¹⁶ and does
+not. Above that line a balance stops counting — earning a Fossil changes
+nothing — so **15 is the effective rebirth ceiling** whatever this table says,
+and rebirth 20 is past int64 entirely, so it could not be stored on a
+leaderboard even if it could be reached.
+
+`Economy.MaxFossils` clamps at 2^53 accordingly, and `LeaderboardConfig.MaxValue`
+uses the same ceiling. This is recorded rather than fixed because fixing it is a
+design decision, not a code one: either the growth factor comes down (5.2 is
+steep — 4.0 would push the crossing past rebirth 20) or the ceiling is stated as
+the intended end of the curve. Nobody reaches rebirth 15 in V1's content, so
+there is time to choose.
 
 **What resets:** Fossils, all Fossil-purchased upgrade levels, placed and
 stored dinosaurs *except* Vault Pedestal residents (up to 5), zone unlocks

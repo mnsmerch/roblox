@@ -82,11 +82,26 @@ function EconomyService.SettleBank(player: Player)
 	local nextRate = Economy.ParkIncomeRate(data)
 	local banked = Economy.BankedNow(data, os.time(), nextRate)
 
-	PlayerDataService.UpdateKeys(player, { "BankedFossils", "BankedAt", "BankedRate" }, function(profile)
-		profile.BankedFossils = banked
-		profile.BankedAt = os.time()
-		profile.BankedRate = nextRate
-	end, "settle bank")
+	--[[
+		The peak is recorded HERE because this is the one function every rate
+		change goes through. Until Step 22 nothing wrote `PeakIncomePerSec` at
+		all, so the Highest Income leaderboard would have ranked every player
+		at zero - the registered-but-inert failure this project keeps removing.
+
+		Peak rather than current, deliberately: a player who sells their park
+		to fund a rebirth should not drop off the board for the ten minutes it
+		takes to rebuild. It never decreases, so it survives the reset that
+		`RebirthConfig` classifies `Stats` as Preserved for.
+	]]
+	PlayerDataService.UpdateKeys(player,
+		{ "BankedFossils", "BankedAt", "BankedRate", "Stats" }, function(profile)
+			profile.BankedFossils = banked
+			profile.BankedAt = os.time()
+			profile.BankedRate = nextRate
+			if nextRate > profile.Stats.PeakIncomePerSec then
+				profile.Stats.PeakIncomePerSec = nextRate
+			end
+		end, "settle bank")
 
 	rateCache[player] = nextRate
 end

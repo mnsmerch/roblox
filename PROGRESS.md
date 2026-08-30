@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 21 of 24 complete.** The loop can be reset, re-run and paid for. Awaiting the Studio Play tests before Step 22.
+## Status: **Step 22 of 24 complete.** The loop is playable, resettable, purchasable and ranked. Awaiting the Studio Play tests before Step 23.
 
 ## Completed
 
@@ -31,7 +31,8 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 18** — server events | Scheduler, 4 handlers, contribution rewards, 98 more assertions |
 | 2026-08-30 | **Step 19** — quests, dailies, Index | UTC days, streaks, milestones, 281 more assertions |
 | 2026-08-30 | **Step 20** — rebirth | The one-write reset, the shared preview, 124 more assertions |
-| 2026-08-30 | **Step 21** — purchases | 6 passes, 8 products, the receipt ring, 103 more assertions |
+| 2026-08-30 | **Step 21** — purchases | 6 passes, 8 products, the receipt ring, 162 more assertions |
+| 2026-08-30 | **Step 22** — leaderboards | 4 boards, the throttle, the Colosseum, 113 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -58,7 +59,7 @@ accident. Updated at the end of every build step.
 | 19 | Quests, dailies, index | ✅ **done** |
 | 20 | Rebirth | ✅ **done** |
 | 21 | Purchases | ✅ **done** |
-| 22 | Leaderboards | ⬜ |
+| 22 | Leaderboards | ✅ **done** |
 | 23 | Tutorial | ⬜ |
 | 24 | Polish, analytics, hardening | ⬜ |
 
@@ -87,6 +88,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/DailyConfig` | ModuleScript | The 7-day chest, streak milestones, boost definitions |
 | `Config/IndexConfig` | ModuleScript | Milestones, rarity sets, and a **counted** completion denominator |
 | `Config/ProductConfig` | ModuleScript | 6 gamepasses + 8 products, their effects, and **no invented asset ids** |
+| `Config/LeaderboardConfig` | ModuleScript | 4 boards, the value ceiling, and the budget arithmetic that sets the schedule |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -146,6 +148,7 @@ rebuilds this on every server start.
 | `Services/IndexService` | ModuleScript | Discovery, completion %, milestones and rarity sets |
 | `Services/RebirthService` | ModuleScript | Eligibility, the one-write reset, grants, the Cache |
 | `Services/PurchaseService` | ModuleScript | **The only file that touches MarketplaceService.** Receipts, ownership, server boosts |
+| `Services/LeaderboardService` | ModuleScript | **The only file that touches OrderedDataStore.** Throttled writes, the 60 s read cache |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -540,6 +543,50 @@ each of the four steps to prove it.
 EffectModes` names `add`, `multiply` or `max` per effect, and a require-time
 assertion fails any pass granting a numeric effect with no mode. See finding 36.
 
+### Step 22 — leaderboards
+
+```
+LeaderboardConfig.Boards / Order              -- 4 of docs/02's 8
+LeaderboardConfig.Get(boardId) / Count()
+LeaderboardConfig.MaxValue                    -- 2^53, same as Economy.MaxFossils
+LeaderboardConfig.StoreValue(raw) -> integer  -- floor, clamp, NaN-safe
+LeaderboardConfig.ValueFor(boardId, data) -> integer   -- pure, shared
+LeaderboardConfig.ReadIntervalFor(players) -> seconds
+LeaderboardConfig.BudgetCheck(players) -> { WritesPerMin, ReadsPerMin, Fits, ... }
+LeaderboardConfig.StatueBoard / StatueCount / PageSize
+
+LeaderboardService.Get(boardId) -> board?          cached, may be stale
+LeaderboardService.GetAll() -> { [boardId]: board }
+LeaderboardService.GetStatues() -> { {UserId, Name, Value, Rank} }
+LeaderboardService.SelfEntry(player, boardId) -> { Value, Rank? }
+LeaderboardService.FlushPlayer(player) / RefreshNow(boardId?)
+LeaderboardService.BoardsRefreshed  Signal()
+
+LeaderboardController.Fetched  Signal(payload)
+LeaderboardController.GetPayload() -> payload?
+```
+
+**Writes are throttled AND change-checked, and the second one does most of the
+work.** A player earning every second for an hour costs 15 requests against a
+naive 14,400 — 960× fewer. The first throttled tick writes all four boards; the
+eleven after it write only the value that moved. An idle player costs four
+requests ever. A throttle alone would spend four every five minutes forever.
+
+**60 seconds is a floor, not a period.** Reads are per-server while the read
+budget scales with players, so a nearly empty server is the binding case and
+the one nobody tests. V1's four boards fit at one player; docs/02's eight would
+not, so the interval is derived from the board count — see finding 41.
+
+**There is no rank query, and nothing pretends otherwise.** `OrderedDataStore`
+returns pages and has no rank API. A player in the cached top 100 gets their
+real rank; one outside it gets their value and the words. See the service
+header for why a sampled rank would be worse than none.
+
+**`ValueOf` is pure and shared** for the same reason `RebirthConfig.Preview` is:
+the server writes the number and the client pins it under the list, and two
+implementations would show a player a figure that disagrees with the board they
+are standing in front of. It is never *trusted* from the client, only displayed.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -663,6 +710,7 @@ client never hears about; there is no polling fallback by design.
 | `IndexController` | ModuleScript | The book, one page per zone |
 | `RebirthController` | ModuleScript | The keep/lose/gain confirm screen |
 | `PurchaseController` | ModuleScript | The Robux store, the honesty panel, the server-boost banner and Thanks. **Prompts; never grants** |
+| `LeaderboardController` | ModuleScript | The boards screen and the Colosseum's pillars and statues, from one cached fetch |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -795,11 +843,19 @@ current value, then on every change at or under that path. No polling anywhere.
 | 87 | Added `PurchaseController` to the client roster (#20), on the left rail as 💎 and on **6** | docs/13 §Step 21 asks for "server-wide boost purchases + the Thanks button", and both remotes would otherwise be declared and inert. The store itself has to live somewhere too: the Bone Market spends Fossils and mixing a Robux prompt into it is exactly the confusion docs/07 §1 rule 7 exists to prevent | docs/09 §1, docs/07 §4 |
 | 88 | The store's row order lives in `ProductConfig`, not the controller | A hash table has no order, so a store that iterates one moves its rows between sessions. More importantly an order the client owns cannot be checked against the catalogue: `PassOrder` and `ProductOrder` are asserted at require time to cover it exactly once, so a pass added without a listing fails loudly instead of silently never appearing for sale | docs/07 §2–3 |
 | 89 | Added `Settings.SeenStoreNotice` (schema + template, no migration) | docs/07 §1 rule 7's panel is "the first time a player opens the shop", which needs somewhere durable to record that it has been shown or it becomes a nag. In `Settings` because there is already a validated remote for writing one and because a player can turn it back on. A new field with a sensible default is Reconcile's job, not a migration's — the same call `BankedRate` made (#38) | docs/06 §8, docs/07 §1 |
+| 90 | Added `LeaderboardConfig` as config module #18 | The value formula is read on both sides — the server writes it to the store, the client pins it under the list — so it cannot live on either alone. It also holds the budget arithmetic, which is the only way "does this fit" is a measured number rather than a hope | docs/09 §1, docs/10 §4 |
+| 91 | V1 builds **4** Colosseum pillars, not docs/02's 8 | One per shipped board. Four blank slabs are something a player walks up to and learns nothing from, and the arc spacing is derived from the count so V1.4's four space themselves — the same call the Index made about its denominator | docs/02 §1.1 |
+| 92 | The value ceiling is **2^53**, not docs/13's 9e18 | 9e18 is under int64 but far above where a Lua double stops representing consecutive integers, so a value near it would already have been rounded before the store saw it. 2^53 is the largest ceiling where every integer below survives the trip | docs/10 §4, docs/13 §Step 22 |
+| 93 | `Economy.MaxFossils` 1e30 → 2^53 | Its own comment said "exact to 2^53… the clamp is a safety net", and 1e30 is fifteen orders of magnitude past that, so the net caught nothing it claimed to. See finding 39 for the consequence | docs/05 §6 |
+| 94 | The read interval is **derived from the board count**, with docs/10's 60 s as a floor | Reads are per-server and the read budget is not, so the tightest case is an empty server. Four boards fit at one player; eight do not. Derived rather than fixed so the build-out slows itself instead of silently failing — see finding 41 | docs/10 §4 |
+| 95 | `EconomyService.SettleBank` now records `Stats.PeakIncomePerSec` | Nothing had ever written it, and the Highest Income board reads it — see finding 38. Recorded here because this is the one function every rate change goes through, and peak rather than current so selling a park to fund a rebirth does not drop you off the board | docs/10 §1 |
+| 96 | Added `LeaderboardController` to the client roster (#21) | docs/09 §1's client list has no home for the boards screen, and the Colosseum's SurfaceGuis are presentation over server truth — the same call `WeatherController` made about Lighting. One fetch feeds both surfaces | docs/09 §1, docs/02 §1.1 |
+| 97 | docs/05 §6's rebirth-20 row corrected: **1.00 × 10¹⁹**, not 5.4 × 10¹⁹ | The formula is `250,000 × 5.2^(n-1)`; the table's row applied the exponent as n. Every other row in the table reproduces from the formula, so the row was the error, not the formula | docs/05 §6 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 85 source files and runs **3,718
-assertions** outside Roblox. Last run: **3,718 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 88 source files and runs **3,831
+assertions** outside Roblox. Last run: **3,831 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -815,6 +871,7 @@ assertions** outside Roblox. Last run: **3,718 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step22_spec` (113) | The four V1 boards against docs/12's list and docs/10 §4's reserved store names, every board's value read off a profile including the emptied park that must keep its Income place, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates computed at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against a naive 14,400, the rank contract for a player outside the top 100, and the Colosseum's geometry against the plaza and the park ring at 1, 4 and 8 pillars |
 | `step21_spec` (162) | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; **no asset id invented**, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches *and* against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; server purchases; VIP's offline rate all the way through to the hourly payout; every gamepass effect proven to declare a combination mode; and both store orders proven to cover the catalogue exactly once |
 | `step20_spec` (123) | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant reaching its cap, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
 | `step19_spec` (263) | UTC day and week boundaries against real calendar dates and every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and full reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
@@ -1267,6 +1324,73 @@ Bugs the specs caught before they shipped:
     mean confiscating placement space a player has already bought and built a
     park around. Recorded in docs/07 §2 so it is a known shape rather than a
     surprise found after launch.
+
+38. **The Highest Income board would have ranked every player at zero.**
+    `Stats.PeakIncomePerSec` has been in the profile template since Step 2 and
+    *nothing had ever written it*. It is the column docs/10 §4 assigns to
+    `SAD_LB_Income`, so the board would have shipped sorting a field that is
+    permanently 0 — a leaderboard where everybody ties, which reads as a broken
+    DataStore rather than as a missing line of code.
+
+    Written now in `EconomyService.SettleBank`, the one function every rate
+    change goes through. Peak rather than current, deliberately: a player who
+    sells their park to fund a rebirth should not drop off the board for the
+    ten minutes it takes to rebuild, and a board that punishes the thing the
+    game most wants you to do is working against the design.
+
+    Same family as findings 29, 30 and 32: something registered and inert.
+
+39. **`Economy.MaxFossils` was 1e30, and its own comment said 2^53.** The
+    comment read "Fossils are stored as Lua doubles, exact to 2^53… the clamp
+    is a safety net" — above a clamp fifteen orders of magnitude past 2^53. It
+    caught nothing the sentence above it claimed to care about.
+
+    The reason it matters is not overflow. A double does not overflow at 1e20;
+    it stops representing consecutive integers, so a balance up there simply
+    **stops counting** — earning a Fossil changes nothing and the player
+    watches a frozen number with no error anywhere. Now 2^53, the same ceiling
+    `LeaderboardConfig.MaxValue` uses.
+
+    Its consequence is a real design constraint, recorded rather than papered
+    over: docs/05 §6's curve is 250,000 × 5.2ⁿ⁻¹, which crosses 2^53 between
+    rebirth 15 and 16, so **15 is the effective rebirth ceiling** whatever the
+    table says. Rebirth 20 at 1.00 × 10¹⁹ is past int64 entirely and could not
+    be stored on a leaderboard even if it could be reached. Fixing it is a
+    design decision rather than a code one — drop the growth factor to ~4.0 and
+    the crossing moves past rebirth 20, or state the ceiling as the intended
+    end of the curve. Nobody reaches rebirth 15 in V1's content, so there is
+    time to choose. (Correcting that table also turned up an off-by-one in it:
+    the rebirth-20 row had applied the exponent as n rather than n − 1.)
+
+40. **`Count()` and `ReadIntervalFor` read different lists.** `Count` closed
+    over the local array the boards were built into; `ReadIntervalFor` read
+    `LeaderboardConfig.Order`. Identical until something replaces the public
+    field — which is exactly what the spec's eight-board simulation did, and
+    the two then disagreed silently for the rest of the run.
+
+    Caught because the spec restored the catalogue by reassigning the field and
+    a later assertion counted four boards as eight. Both now read the public
+    field, and the spec mutates in place and asserts the restore.
+
+    Worth stating generally: a public field and a private copy of the same list
+    are one refactor away from disagreeing, and the disagreement is silent.
+
+41. **The eight-board build-out would exhaust an empty server's read budget.**
+    Writes scale with players and so does the write budget, so a full server is
+    never the problem — measured, 30 players use under a tenth of it. Reads do
+    not scale with players, because the cache is server-wide, while the read
+    budget (`GetSortedAsync`: 5 + 2 × players per minute) does. So the tightest
+    case is **one player**, and it is the one nobody tests.
+
+    V1's four boards at 60 s cost 4/min against a budget of 7 and fit. docs/02
+    §1.1's eight would cost 8/min and would not — they would start failing on a
+    nearly empty server, which is also the server a developer tests on.
+
+    So the period is derived from the board count rather than fixed, with
+    docs/10's 60 s as a floor: V1 is unaffected and the eight-board build-out
+    stretches itself to ~92 s. Same shape as the clamped no-repeat rule in
+    Step 18 — a number that corrects itself as content ships rather than one
+    somebody has to remember.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

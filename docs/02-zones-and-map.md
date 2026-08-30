@@ -51,6 +51,12 @@ neighbouring zones still clear each other by 168 studs — asserted in
 | **Signpost Ring** | 10 lit signposts, one per zone, showing unlock cost + best rarity | outer edge |
 | **Teleport Obelisk** | Fast-travel to any discovered zone | beside spawn |
 
+*(V1 builds **4** pillars, one per shipped board — docs/12's Richest, Highest
+Income, Most Eggs Stolen, Highest Rebirth — plus all 3 statues. The arc spacing
+is derived from the board count, so V1.4's four extra boards space themselves.
+Four blank slabs would teach a player nothing, the same reason the Index counts
+what exists rather than what is planned.)*
+
 Park plots face *inward* on purpose: standing in the plaza you can see every
 other player's park skyline at once. That's the status engine.
 

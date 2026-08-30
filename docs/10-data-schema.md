@@ -183,3 +183,31 @@ Rules:
 Leaderboards are written at most once every 5 minutes per player and only when
 the value actually changed, to stay well inside `OrderedDataStore` budgets.
 `LeaderboardService` reads the top 100 of each board every 60 s and caches.
+
+**Measured (Step 22).** A player earning every second for an hour costs **15**
+requests, against 14,400 for a naive write-every-change — 960× fewer. The first
+throttled tick writes all four boards; the eleven after it write only the one
+value that moved, which is the changed check rather than the throttle doing the
+work. An idle player costs four requests in their first tick and nothing ever
+again.
+
+**60 s is a floor, not a fixed period.** Reads are per-*server* while the read
+budget (`GetSortedAsync`: 5 + 2 × players per minute) scales with players, so
+the tightest case is a nearly empty server, not a full one. V1's four boards
+cost 4/min against a budget of 7 at one player and fit. The eight boards
+docs/02 §1.1 describes would cost 8/min and would **not** — so
+`LeaderboardConfig.ReadIntervalFor` derives the period from the board count and
+stretches to ~92 s once all eight ship. V1 is unaffected; the build-out slows
+itself instead of silently failing.
+
+**The value ceiling is 2^53, not the 9e18 the build order names.** 9e18 is under
+the int64 limit but far above the point where a Lua double stops representing
+consecutive integers, so a value near it would already have been rounded before
+the store saw it. `Economy.MaxFossils` uses the same ceiling — see docs/05 §6 on
+what that means for deep rebirths.
+
+**There is no rank query.** `OrderedDataStore` returns pages and has no API for
+"what rank is this key"; counting everyone above a player means paging the whole
+store. A player in the cached top 100 is shown their real rank. A player outside
+it is shown their **value** and the words *outside the top 100*, never an
+estimated number.

@@ -23,6 +23,7 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
+local LeaderboardConfig = require(Shared.Config.LeaderboardConfig)
 local ParkConfig = require(Shared.Config.ParkConfig)
 local ZoneConfig = require(Shared.Config.ZoneConfig)
 
@@ -133,6 +134,112 @@ local function buildBoneMarket(hub: Model)
 	return market
 end
 
+--[[
+	The Leaderboard Colosseum, "west" per docs/02 §1.1: one pillar per SHIPPED
+	board, and three golden statue plinths.
+
+	Per shipped board, not per board docs/02 names. Eight pillars for four
+	boards would be four blank slabs a player walks up to and learns nothing
+	from - the same reason the Index counts what exists rather than what is
+	planned. The ring geometry is derived from the count, so V1.4's four extra
+	boards space themselves.
+
+	The pillars carry no text. `LeaderboardController` attaches the SurfaceGui
+	and draws the cached rows, for the reason WeatherController owns Lighting:
+	a board is presentation, the numbers behind it are server truth, and a
+	client that fails to draw one has broken its own screen rather than
+	everyone's world.
+]]
+--[[
+	Placement. The plaza reaches 520 and the park ring's inner edge is at ~513,
+	so everything here has to sit inside that; the Bone Market is at 90, so the
+	Colosseum has to sit outside THAT. 250 and 195 leave a clear walk between
+	the two and a clear walk out to the parks.
+]]
+local COLOSSEUM_ANGLE = 0 -- degrees offset; +180 below puts it opposite the market
+local COLOSSEUM_RADIUS = 250
+local COLOSSEUM_ARC = 70 -- degrees the pillars are spread across
+local STATUE_RADIUS = 195
+
+local function buildColosseum(hub: Model)
+	local colosseum = Instance.new("Model")
+	colosseum.Name = "Colosseum"
+
+	local boardCount = LeaderboardConfig.Count()
+
+	--[[
+		A single board would sit at the arc's start rather than facing the
+		plaza, so the spread is computed from the gaps between pillars, not
+		from the pillars themselves.
+	]]
+	local gaps = math.max(boardCount - 1, 1)
+
+	for index, boardId in LeaderboardConfig.Order do
+		local entry = LeaderboardConfig.Get(boardId)
+		local spread = if boardCount == 1 then 0 else (index - 1) / gaps - 0.5
+		local angle = math.rad(COLOSSEUM_ANGLE + spread * COLOSSEUM_ARC + 180)
+		local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * COLOSSEUM_RADIUS
+
+		-- Same inward-facing convention PlotBuilder and the Bone Market use.
+		local facing = CFrame.lookAt(position + Vector3.new(0, 14, 0), position * 2)
+
+		local pillar = part({
+			Name = "Board_" .. boardId,
+			Size = Vector3.new(20, 28, 3),
+			CFrame = facing,
+			Color = Color3.fromHex("4A3B22"),
+			Material = Enum.Material.Slate,
+			Parent = colosseum,
+		})
+		--[[
+			Attribute, not name. The controller finds boards by attribute, so a
+			hand-built Colosseum in a future art pass only has to carry it -
+			the same seam the nest anchors use.
+		]]
+		pillar:SetAttribute("LeaderboardBoard", boardId)
+		pillar:SetAttribute("LeaderboardTitle", entry.DisplayName)
+
+		part({
+			Name = "Crest",
+			Size = Vector3.new(22, 3, 4),
+			CFrame = facing * CFrame.new(0, 15, 0),
+			Color = Color3.fromHex("FFB020"),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = colosseum,
+		})
+	end
+
+	--[[
+		The three plinths. Empty gold blocks: the statue itself is the top
+		player's avatar, which only exists at runtime and only the client can
+		usefully fetch, so the world provides the pedestal and the controller
+		provides the person.
+	]]
+	for rank = 1, LeaderboardConfig.StatueCount do
+		local spread = (rank - 2) * 0.5 -- -0.5, 0, 0.5 around the centre
+		local angle = math.rad(COLOSSEUM_ANGLE + spread * COLOSSEUM_ARC * 0.55 + 180)
+		local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * STATUE_RADIUS
+
+		-- First place stands tallest. The podium reads at a glance from the
+		-- plaza, before any text has loaded.
+		local height = if rank == 1 then 16 else 11
+
+		local plinth = part({
+			Name = "Statue_" .. rank,
+			Size = Vector3.new(10, height, 10),
+			CFrame = CFrame.lookAt(position + Vector3.new(0, height * 0.5, 0), position * 2),
+			Color = Color3.fromHex("D9A521"),
+			Material = Enum.Material.Metal,
+			Parent = colosseum,
+		})
+		plinth:SetAttribute("LeaderboardStatue", rank)
+	end
+
+	colosseum.Parent = hub
+	return colosseum
+end
+
 function WorldBuilder.BuildHub(parent: Instance): Model
 	local hub = Instance.new("Model")
 	hub.Name = "Hub"
@@ -161,6 +268,7 @@ function WorldBuilder.BuildHub(parent: Instance): Model
 	})
 
 	buildBoneMarket(hub)
+	buildColosseum(hub)
 
 	--[[
 		The Teleport Obelisk, "beside spawn" per docs/02 §1.1. Opens the same

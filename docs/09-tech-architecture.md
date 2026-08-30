@@ -90,7 +90,7 @@ ServerScriptService
         ├── IndexService             discovery, completion %, milestones
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, ownership cache, server boosts
-        ├── LeaderboardService       OrderedDataStore aggregation
+        ├── LeaderboardService       the ONLY file that touches OrderedDataStore
         ├── NotificationService      the one place a notification is created
         ├── BroadcastService         MessagingService: the only file that knows it exists
         └── AnalyticsService         AnalyticsService wrappers + custom logging
@@ -122,6 +122,7 @@ StarterPlayer
             ├── WeatherController    Lighting, locally, so it always reverts
             ├── RebirthController    the keep/lose/gain confirm screen
             ├── PurchaseController   the store, the honesty panel, Thanks
+            ├── LeaderboardController  the boards screen and the Colosseum
             ├── TutorialController
             └── SettingsController
 
