@@ -1018,6 +1018,48 @@ The scanner also tests itself against a fixture with a one-argument call, a
 correct call, an over-long call and a call whose arguments are themselves calls
 — because a checker with nothing behind it is worse than no checker.
 
+### The wiring check (findings 140-143)
+
+**Holding E on a nest egg did nothing.** `NestBuilder` put a ProximityPrompt on
+every egg. `NestService` fired `PickupRequested` when one was triggered. Nothing
+listened. Meanwhile `EggService` handled a `RequestPickupEgg` remote that no
+client ever sent — two halves of the game's core loop, neither joined to the
+other, through all twenty-four build steps.
+
+The signal is the right half to build on: a ProximityPrompt's `Triggered` fires
+**on the server** with the real `Player`, so there is no client claim to
+distrust and no remote to rate-limit. `TryPickup` still re-checks distance,
+capacity and ownership, because the prompt's own range is enforced client-side
+and an exploiter deletes it.
+
+**It is the most common bug in this project by a distance** — rule 11 in Step 17
+(registered, never defined), findings 29, 30, 56, 131, and now this. It is
+invisible to every other check: a dead `Signal` is valid Luau, it compiles, and
+the boot log says "Ready".
+
+So `tests/wiring_spec` walks the whole tree via `--@TREE` and asserts both ends
+exist for all **54** Signals and all **40** entries in the frozen `Net`
+inventory. Anything deliberately one-ended is allowlisted **with its reason**,
+so "an extension point nobody needed yet" and "the bug that made the game
+unplayable" are told apart in writing rather than by assumption. The allowlist is
+checked in both directions — a listed signal that gains a listener also fails, so
+the list cannot rot into a graveyard.
+
+It found two more the same day it was written:
+
+- **`EggService.RareGrab`** — docs/03 §1.1 builds the multi-player chase on a
+  Legendary-or-better grab telling the whole server. Fired since Step 8, heard by
+  nobody, so the moment the design is built around never happened.
+- **`EventState`** — `HUDController.BannerPriority` has had an `Event` slot since
+  Step 5 and the client had no handler at all, so a Meteor Impact or an Amber
+  Rain ran its full twelve-to-eighteen-minute cycle with the player told nothing.
+
+Only the **handler** side of a remote is checked, and that limit is deliberate.
+Handlers always register with a literal name, so their absence is a fact; senders
+are often config-driven (`Net.FireServer(remote, ...)` where `remote` came from
+`UpgradeConfig`), so "nobody sends this" could only ever be a guess — and a check
+that guesses is a check that gets switched off.
+
 ### StarterPlayerScripts/SAD_Client/UI
 
 | Object | Type | Purpose |
@@ -1234,11 +1276,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 137 | `Format.Odds` was called with one of its two arguments in `IndexController` | Shipped in Step 19 and found by opening the Index in Studio. `total` was nil, the `weight >= total` compare threw, and the collection book never opened — the panel was unreachable for five build steps with every spec green | — |
 | 138 | Added `--@TREE` to the test harness, and a call-arity spec over the whole tree | Luau resolves a cross-file `require` to `any`, so the analyser never sees a signature; the specs never run a controller's render path. Neither could have caught #137. `--@TREE` inlines every source file as `{ [path] = source }` so a spec can assert about all of them at once — the mistake is never in the file you thought to hand-list | — |
 | 139 | The arity scan treats an **untyped** parameter as optional | `Patch.Diff(previous, current, basePath, depth)` is unannotated and defaults its last two with `or`, so counting an untyped tail as required reports a correct call as broken. A false positive gets a check deleted; a false negative just leaves it no worse than before | — |
+| 140 | **Nothing listened to `NestService.PickupRequested`, so eggs could not be picked up at all** | The prompt fired a signal into the void while `EggService` handled a remote no client sent. Now wired signal → `EggService.TryPickup`, which is the better half: `Triggered` fires server-side with the real Player, so there is no client claim to distrust and no rate limit needed. The remote handler stays — it lands in the same validated `TryPickup`, it is in the frozen `Net` inventory, and the exploit sweep covers it | docs/03 §1.1 |
+| 141 | `EggService.RareGrab` was fired and heard by nobody since Step 8 | docs/03 §1.1 makes a Legendary-or-better grab tell the whole server, which is what turns one player's pickup into a chase with more than one participant. Now announced with `All` rather than `Announce` — a chase is local to one server, and a player two servers away cannot join it. The grabber is excluded; they already have the egg on their back | docs/03 §1.1 |
+| 142 | The client had no handler for `EventState`, so world events were invisible | `HUDController.BannerPriority` has had an `Event` slot since Step 5. Handled in `HUDController` rather than a new controller, for the same reason there is no `RaidController` (#51): it already owns the banner, and one message handler does not justify putting the same UI in two places | docs/12 §1 |
+| 143 | The shared banner keeps a text **per priority** instead of one holder level | Wiring #142 made a latent flaw reachable: the banner hid outright when its holder released it, so a Nest Frenzy ending would blank a Rainstorm line that was still true, for up to eight minutes until the next weather roll. Invisible while weather was the only claimant, because weather always replaced itself | — |
+| 144 | Added `tests/wiring_spec`: every Signal and every remote has both ends | Five bugs of this family now (rule 11, #29, #30, #56, #131, #140-142). A dead Signal is valid Luau that compiles and boots clean, so no other check can see it. Deliberately one-ended things are allowlisted with a written reason, and the allowlist is verified in both directions so it cannot rot | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 100 source files and runs **6,884
-assertions** outside Roblox. Last run: **6,884 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 100 source files and runs **6,897
+assertions** outside Roblox. Last run: **6,897 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed

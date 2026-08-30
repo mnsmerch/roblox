@@ -851,28 +851,42 @@ end
 ]]
 HUDController.BannerPriority = { Weather = 1, Event = 2 }
 
-local bannerHolder = 0
+--- Banner text per priority, so releasing the top one falls back to the next
+--- rather than to nothing. Replaced a single `bannerHolder` level - see below.
+local bannerTexts = {}
 
+--[[
+	One line, two claimants: weather at priority 1 and world events at 2.
+
+	═══ WHY THIS KEEPS A SLOT PER PRIORITY ═════════════════════════════════════
+	It used to keep a single holder level and hide the banner outright when that
+	holder released it. That was invisible while only weather used it -
+	weather always replaced itself. The moment world events were wired in
+	(they had never had a client handler), the flaw became reachable: a Nest
+	Frenzy would take the line at priority 2, and when it ended the banner went
+	blank and the Rainstorm still running underneath it stayed unmentioned until
+	the next weather roll, up to eight minutes later.
+
+	So each priority holds its own text and the highest occupied slot wins.
+	Releasing one falls back to the next instead of to nothing, which is what a
+	shared line has to do.
+	═══════════════════════════════════════════════════════════════════════════
+]]
 function HUDController.SetEventBanner(text: string?, priority: number?)
 	local level = priority or 0
+	bannerTexts[level] = text
 
-	if text == nil then
-		-- Only the holder may release it.
-		if level < bannerHolder then
-			return
+	local topLevel, topText = -1, nil
+	for slot, slotText in bannerTexts do
+		if slotText ~= nil and slot > topLevel then
+			topLevel, topText = slot, slotText
 		end
-		bannerHolder = 0
-		eventBanner.Visible = false
-		return
 	end
 
-	if level < bannerHolder then
-		return
+	eventBanner.Visible = topText ~= nil
+	if topText then
+		eventBanner.Label.Text = topText
 	end
-
-	bannerHolder = level
-	eventBanner.Visible = true
-	eventBanner.Label.Text = text
 end
 
 function HUDController.GetButton(id: string)
@@ -916,6 +930,31 @@ function HUDController.Start(app)
 	MinimapController = ok and found or nil
 
 	Net.On("StealAlert", HUDController.OnStealAlert)
+
+	--[[
+		═══ THE EVENT HALF OF THE BANNER ═══════════════════════════════════════
+		`BannerPriority` has had an `Event` slot since Step 5 and nothing ever
+		set it. `EventService` fires `EventState` on every start and end, and no
+		client handler existed - so a Meteor Impact or an Amber Rain ran for its
+		full duration with the player told nothing at all.
+
+		Here rather than in a controller of its own: HUDController owns the
+		banner, and adding an EventController for one message handler would put
+		the same UI in two places (the reasoning behind finding 51).
+
+		Priority 2 beats weather's 1, so a Nest Frenzy during a Rainstorm shows
+		the frenzy - the rarer thing wins the one line they share. Clearing on
+		`Event = nil` hands the line back to whatever weather is still running.
+	]]
+	Net.On("EventState", function(payload)
+		if type(payload) ~= "table" or not payload.Event then
+			HUDController.SetEventBanner(nil, HUDController.BannerPriority.Event)
+			return
+		end
+		HUDController.SetEventBanner(
+			string.upper(tostring(payload.DisplayName or payload.Event)),
+			HUDController.BannerPriority.Event)
+	end)
 
 	UIController.BreakpointChanged:Connect(applyBreakpoint)
 	applyBreakpoint(UIController.Breakpoint, UIController.LogicalWidth)

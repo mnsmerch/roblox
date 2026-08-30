@@ -823,8 +823,60 @@ function EggService.Init(app)
 end
 
 function EggService.Start(app)
+	--[[
+		═══ THE PROMPT IS THE PICKUP ═══════════════════════════════════════════
+		This connection is what makes the game playable, and it was missing.
+
+		`NestBuilder` puts a ProximityPrompt on every nest egg, and
+		`NestService` fires `PickupRequested` when one is triggered. Nothing
+		listened. Meanwhile the `RequestPickupEgg` remote below was handled and
+		no client ever sent it: two halves of a pickup path, neither joined to
+		the other, so holding E on an egg did nothing at all.
+
+		The signal is the right half to build on. A ProximityPrompt's Triggered
+		fires ON THE SERVER with the real Player - there is no client claim in
+		it to distrust, and no remote to rate-limit. `TryPickup` still re-checks
+		distance, capacity and ownership, because the prompt's own range is
+		enforced client-side and an exploiter deletes it.
+		═══════════════════════════════════════════════════════════════════════
+	]]
+	NestService.PickupRequested:Connect(function(player: Player, nestId: string, slotIndex: number)
+		EggService.TryPickup(player, nestId, slotIndex)
+	end)
+
+	--[[
+		Kept alongside it. Nothing in the shipped client sends this - the prompt
+		above is the real path - but it is in the frozen `Net` inventory, the
+		exploit sweep covers it, and it lands in exactly the same validated
+		`TryPickup`. Removing it would narrow that sweep's coverage without
+		closing anything.
+	]]
 	Net.OnEvent("RequestPickupEgg", function(player: Player, nestId: string, slotIndex: number)
 		EggService.TryPickup(player, nestId, slotIndex)
+	end)
+
+	--[[
+		docs/03 §1.1: a Legendary-or-better grab "tells the whole server", which
+		is what turns one player's pickup into a chase with more than one
+		participant. `RareGrab` has been fired since Step 8 and nothing has ever
+		listened, so the moment the design is built around never happened.
+
+		`All`, not `Announce`: a chase is local to this server, and a player two
+		servers away cannot join it. The grabber is excluded - they already have
+		the egg on their back and a carry panel telling them so.
+	]]
+	EggService.RareGrab:Connect(function(player: Player, token)
+		local tier = RarityConfig.Tiers[token.Rarity]
+		local zone = ZoneConfig.Zones[token.Origin]
+		NotificationService.All({
+			Kind = "toast",
+			Text = string.format("%s grabbed a %s egg in %s",
+				player.DisplayName,
+				string.upper(tier.DisplayName),
+				(zone and zone.DisplayName) or "the wild"),
+			Color = RarityConfig.GetColor(token.Rarity),
+			Duration = 4,
+		}, player)
 	end)
 
 	Net.OnEvent("RequestDropEgg", function(player: Player, eggUid: string)
