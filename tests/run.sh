@@ -38,6 +38,9 @@ COMPILE="$(dirname "$LUAU")/luau-compile"
 # ── 1. Syntax-check every source file ───────────────────────────────────────
 echo "== syntax"
 syntax_fail=0
+# `-name '*.lua'` and not '*.lua*': ProfileStore is vendored as ProfileStore.luau
+# and is third-party. Syntax-checking somebody else's module tells us nothing we
+# can act on, and a failure there would read as a failure of ours.
 for f in $(find src -name '*.lua' | sort); do
   if out=$("$COMPILE" --binary "$f" 2>&1 >/dev/null) && [ -z "$out" ]; then
     echo "  ok   $f"
