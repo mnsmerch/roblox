@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 18 of 24 complete.** Things happen to the whole server. Awaiting the Studio Play tests before Step 19.
+## Status: **Step 19 of 24 complete.** There are reasons to come back tomorrow. Awaiting the Studio Play tests before Step 20.
 
 ## Completed
 
@@ -29,6 +29,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 16** — notifications & announcements | Four severities, the queue, MessagingService, 87 more assertions |
 | 2026-08-30 | **Step 17** — weather | 4 weathers, the 8-minute roll, local Lighting, 85 more assertions |
 | 2026-08-30 | **Step 18** — server events | Scheduler, 4 handlers, contribution rewards, 98 more assertions |
+| 2026-08-30 | **Step 19** — quests, dailies, Index | UTC days, streaks, milestones, 281 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -52,7 +53,7 @@ accident. Updated at the end of every build step.
 | 16 | Notifications & announcements | ✅ **done** |
 | 17 | Weather | ✅ **done** |
 | 18 | Server events | ✅ **done** |
-| 19 | Quests, dailies, index | ⬜ |
+| 19 | Quests, dailies, index | ✅ **done** |
 | 20 | Rebirth | ⬜ |
 | 21 | Purchases | ⬜ |
 | 22 | Leaderboards | ⬜ |
@@ -80,6 +81,9 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/NotificationConfig` | ModuleScript | The 4 severities, queue limits, publish budget, payload sanitising |
 | `Config/WeatherConfig` | ModuleScript | 4 V1 weathers: weights, durations, non-mutation effects |
 | `Config/EventConfig` | ModuleScript | 4 V1 events: weights, durations, params, handler names |
+| `Config/QuestConfig` | ModuleScript | 12 daily + 6 weekly quests; the metric list QuestService asserts against |
+| `Config/DailyConfig` | ModuleScript | The 7-day chest, streak milestones, boost definitions |
+| `Config/IndexConfig` | ModuleScript | Milestones, rarity sets, and a **counted** completion denominator |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -90,7 +94,8 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Modules/Net` | ModuleScript | Remote inventory, rate limits, arg validation |
 | `Modules/Patch` | ModuleScript | Structural diff + apply, shared by both sides of replication |
 | `Modules/Economy` | ModuleScript | Income, sell value, banking and offline maths. Pure; shared by both sides |
-| `Modules/Stats` | ModuleScript | Every derived player number: upgrades + rebirth grants + caps. Pure |
+| `Modules/Stats` | ModuleScript | Every derived player number: upgrades + rebirth grants + boosts + caps. Pure |
+| `Modules/Time` | ModuleScript | UTC day and week indices, and the three streak cases. Pure |
 | `Modules/AssetBuilder` | ModuleScript | Placeholder egg + dinosaur models; only fills what is missing |
 | `SAD_Assets/{Dinos,Eggs,Effects,UI}` | Folders | Empty until Step 7 |
 
@@ -132,6 +137,10 @@ rebuilds this on every server start.
 | `Services/WeatherService` | ModuleScript | The roll, the countdown, and every effect that changes an outcome |
 | `Services/EventService` | ModuleScript | Scheduler, participation, scoreboards, rewards |
 | `Services/EventService/Handlers` | Folder | `MeteorImpact`, `Stampede`, `NestFrenzy`, `AmberRain` |
+| `Services/QuestService` | ModuleScript | Rolls, progress, claims, rerolls |
+| `Services/QuestService/RewardGrant` | ModuleScript | **The one place a reward is paid out** |
+| `Services/DailyService` | ModuleScript | The 7-day chest and the streak |
+| `Services/IndexService` | ModuleScript | Discovery, completion %, milestones and rarity sets |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -402,6 +411,53 @@ a different key with no score. Rewards are paid and the table cleared in one
 step.
 
 ```
+Time.DayIndex(now) / WeekIndex(now)            -- UTC, integer division
+Time.SecondsUntilNextDay(now) / NextWeek(now)
+Time.StreakState(lastClaimDay, today) -> "continue" | "same" | "break"
+
+QuestConfig.Find(questId) -> kind, quest       -- ids are unique across pools
+QuestConfig.ScaleFossils(base, rebirths)
+DailyConfig.RewardFor(dayIndex) / StreakRewardAt(streak) / GetBoost(id)
+IndexConfig.Total(dinoConfig) / Discovered(data) / CompletionPercent(data, cfg)
+IndexConfig.PendingMilestones(data) / PendingSets(data, dinoConfig)
+
+QuestService.Refresh(player, now?)
+QuestService.Bump(player, metric, amount?)
+QuestService.Claim(player, questId) -> ok, reason?
+QuestService.Reroll(player, questId) -> ok, reason?
+QuestService.ValidateEmitters() -> problem?    -- asserted at Start
+QuestService.RewardGrant                       -- shared with the other two
+QuestService.QuestCompleted  Signal(player, kind, questId)
+
+DailyService.Available(data, now?) -> ok, reason?
+DailyService.NextDayIndex(data, now?) -> 1..7
+DailyService.Claim(player, now?) -> ok, reason?
+DailyService.Claimed  Signal(player, dayIndex, streak, summary)
+
+IndexService.Completion(data) / Discovered(data) / Total()
+IndexService.CheckMilestones(player) -> granted
+IndexService.SpeciesDiscovered  Signal(player, speciesId, entry)
+
+RewardGrant.Give(player, reward, reason) -> summary
+Stats.BoostTotal(data, kind, now?) -> number
+```
+
+**One emitter table, not fifteen listeners.** Every quest is a `Metric` and a
+`Target`; `QuestService.EMITTERS` maps each metric to the signal that
+increments it, and `ValidateEmitters` asserts at boot that the two sets are
+identical. A metric with no emitter is a quest nobody can finish; an emitter
+with no metric is a counter nobody reads. Neither throws, so boot refuses both.
+
+**Claims are marked before they are granted.** Quests, dailies and Index
+milestones all do this in the same order, and it is the whole defence against
+double-claim: two calls racing both read an unclaimed state, but only the first
+write survives to reach the reward.
+
+**Rewards are data, paid by one function.** `RewardGrant.Give` is the only code
+that reads a reward table. Written three times, the rebirth scaling gets
+applied in two of them and the third pays a flat rate forever.
+
+```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
 WildAIService.GetActiveCount() -> number
@@ -520,6 +576,8 @@ client never hears about; there is no polling fallback by design.
 | `NotificationController` | ModuleScript | The queue: three visual weights, one takeover at a time |
 | `SoundController` | ModuleScript | 12 named slots, looked up by name; no asset ids invented |
 | `WeatherController` | ModuleScript | Lighting, locally, so it always reverts |
+| `QuestController` | ModuleScript | The quest board and the daily chest |
+| `IndexController` | ModuleScript | The book, one page per zone |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -629,11 +687,17 @@ current value, then on every change at or under that path. No polling anywhere.
 | 64 | Meteor Impact ships its guaranteed mutation but not its Radioactive ×20 skew | Radioactive is a V1.6 mutation (docs/12). Skewing towards something that cannot be rolled is a line of code that does nothing — the skew arrives with the mutation it skews towards | docs/04 §3 |
 | 65 | Added `RarityConfig.TierAbove`, the counterpart to `TierBelow` | The crater upgrades what it drops by one tier, and V1.1's Great Migration upgrades a whole zone the same way. My first draft guarded with `RarityConfig.TierAbove and ...`, which would have made the upgrade a permanent silent no-op | docs/04 §3 |
 | 66 | `HUDController.SetEventBanner` gained a `priority` | Weather (Step 17) and events (Step 18) both want the one banner slot. An event outranks weather because it is rarer, shorter and has something to do about it; and only the holder may clear it, or weather's 1 Hz countdown would stamp over an event banner a fraction of a second after it appeared | docs/08 §2 |
+| 67 | Added `Time` as shared module #13 | "Which UTC day is it" is read by the server deciding whether a chest may be claimed and by the client drawing the countdown to it. Two implementations is a UI that says READY over a button that refuses. Pure integer division on `os.time()` — no `os.date`, no locale, no daylight saving, none of which is the same on two machines | docs/09 §1, docs/13 §Step 19 |
+| 68 | Added `QuestConfig`, `DailyConfig` and `IndexConfig` (config modules #14–16) | All three were already named in docs/09 §1's tree and reserved in ConfigValidator's optional list | docs/09 §1 |
+| 69 | `RewardGrant` lives under `QuestService` and is exposed as `QuestService.RewardGrant` | Three services hand out overlapping rewards. Written three times, docs/05 §7's rebirth scaling gets applied in two of them. Owned by its largest consumer and shared the same way `NestService.Zones` is | docs/09 §1 |
+| 70 | Added `Profile.BonusDinoSlots`, `BonusVaultSlots` and `Titles` | Index milestones and streak rewards grant permanent slots and cosmetic titles (docs/05 §7), and none of the three had anywhere to live. Step 21's gamepasses add to the same two counters rather than inventing a third source | docs/10 §1 |
+| 71 | `Stats.Luck` and `.MutLuck` now fold in active boosts, and take an optional `now` | A Luck Potion granted into `Boosts` that no stat reads is a reward that does nothing — the decorative failure this project keeps removing. Boosts are stored as an **expiry**, so an expired one contributes nothing without needing to be swept first: correctness does not depend on cleanup, which matters because the client computes stats too and cannot write to the profile | docs/05 §7 |
+| 72 | Two dead entries removed from `ConfigValidator.OPTIONAL_CONFIGS` | `Quest` and `Daily` were skip labels for a skip that never happened, because no rule read either config. After findings #29 and #30 — both about registered-but-inert validation — leaving them would have been the same decoration. Their invariants are asserted where they can fail loudly instead | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 70 source files and runs **3,147
-assertions** outside Roblox. Last run: **3,147 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 80 source files and runs **3,428
+assertions** outside Roblox. Last run: **3,428 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -649,6 +713,7 @@ assertions** outside Roblox. Last run: **3,147 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step19_spec` (263) | UTC day and week boundaries against real calendar dates and every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and full reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `step18_spec` (98) | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report a result, rules 8 and 11 each driven to a real failure, and `TierAbove` against the zone weights the crater reads |
 | `step17_spec` (85) | The published weather table, the Clear share for V1 *and* for the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, Prime's chance proven flat while its count rises, and the two weather tables asserted to name the same set |
 | `step16_spec` (87) | All four severities against docs/08 §5, a strict and unique priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back *downward*, payload sanitising against nesting, functions, NaN, infinity, numeric keys and over-long keys, sanitiser idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own documented floor |
@@ -969,6 +1034,35 @@ Bugs the specs caught before they shipped:
     there. Worth noting alongside #29: of the eleven rules, two were
     effectively decorative until this step, and only one of them was
     decorative *on purpose*.
+
+31. **docs/06's Index denominator is 60; V1 ships 35.** "Completion % =
+    discovered species ÷ 60" is the finished game. Hardcoding it would show a
+    V1 player who has found *every dinosaur that exists* a completion of 58 % —
+    which is not pending, it is wrong.
+
+    `IndexConfig.Total` counts `DinoConfig` instead, so finding everything
+    reads 100 %, and milestones 40/50/60 are simply unreachable until the
+    species ship. The spec asserts both the count and which three milestones
+    are reachable, so shipping species 36–60 fails here and gets updated
+    rather than drifting.
+
+    The same reasoning applies in reverse to rarity completion sets: an
+    *empty* set is not complete. V1 has no Mythic or Ancient species, and
+    paying +2 % Luck for having found nothing would be the 60-species
+    denominator bug from the other direction.
+
+32. **A boost that no stat reads is a reward that does nothing.** docs/05 §7's
+    daily chest hands out Luck Potions and Mutation Serums on days 2 and 4.
+    The profile has had a `Boosts` table since Step 2 and nothing ever read it,
+    so granting one would have been the same decorative failure as an upgrade
+    with no handler (finding at Step 13) or a validation rule with no config
+    (#29).
+
+    `Stats.Luck` and `.MutLuck` now fold in active boosts. Stored as an
+    **expiry** rather than a duration, which has a property worth naming: an
+    expired boost contributes nothing *without needing to be cleaned up*.
+    Correctness does not depend on a sweep — which matters because the client
+    computes stats too and cannot write to the profile.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

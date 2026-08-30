@@ -37,8 +37,17 @@ local ConfigValidator = {}
 local OPTIONAL_CONFIGS = {
 	Event = "EventConfig (Step 18)",
 	Product = "ProductConfig (Step 21)",
-	Quest = "QuestConfig (Step 19)",
-	Daily = "DailyConfig (Step 19)",
+	--[[
+		QuestConfig and DailyConfig were listed here as forward declarations
+		and no rule ever read them. Removed at Step 19 rather than left as
+		labels for a skip that never happens - findings #29 and #30 in
+		PROGRESS.md are both about exactly that kind of decoration.
+
+		Their invariants are asserted where they can fail loudly instead:
+		QuestConfig asserts id uniqueness at load, and
+		QuestService.ValidateEmitters asserts the metric/emitter sets match at
+		Start.
+	]]
 	Weather = "WeatherConfig (Step 17)",
 	Assets = "SAD_Assets (Step 7)",
 }

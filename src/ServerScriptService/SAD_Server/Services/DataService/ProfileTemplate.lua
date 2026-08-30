@@ -51,6 +51,15 @@ local ProfileTemplate = {
 	Upgrades = {}, -- [trackId] = level; absent means 0
 	Defences = {}, -- [defenceId] = level
 	LuckNodes = 0,
+	--[[
+		Permanent grants that are not upgrades and not rebirth grants: Index
+		milestones and streak rewards hand these out (docs/05 §7), and Step 21's
+		gamepasses add to the same two fields rather than inventing a third
+		source. Read by Stats and by RebirthConfig's consumers.
+	]]
+	BonusDinoSlots = 0,
+	BonusVaultSlots = 0,
+	Titles = {}, -- [titleId] = true; cosmetic, from streaks and milestones
 
 	-- ── Collection ──────────────────────────────────────────────────────────
 	Dinos = {}, -- [dinoUid] = DinoEntry

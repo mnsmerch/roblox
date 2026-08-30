@@ -533,6 +533,35 @@ guard that makes the same omission impossible to repeat.
 
 ---
 
+## Step 19 — quests, dailies and the Index
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Modules/Time` | `src/ReplicatedStorage/SAD_Shared/Modules/Time.lua` *(new)* |
+| `SAD_Shared/Config/QuestConfig` | `src/.../Config/QuestConfig.lua` *(new)* |
+| `SAD_Shared/Config/DailyConfig` | `src/.../Config/DailyConfig.lua` *(new)* |
+| `SAD_Shared/Config/IndexConfig` | `src/.../Config/IndexConfig.lua` *(new)* |
+| `Services/QuestService` | `src/.../Services/QuestService/init.lua` *(new)* |
+| `Services/QuestService/RewardGrant` | `src/.../QuestService/RewardGrant.lua` *(new)* |
+| `Services/DailyService` | `src/.../Services/DailyService/init.lua` *(new)* |
+| `Services/IndexService` | `src/.../Services/IndexService/init.lua` *(new)* |
+| `SAD_Client/Controllers/QuestController` | `src/.../Controllers/QuestController.lua` *(new)* |
+| `SAD_Client/Controllers/IndexController` | `src/.../Controllers/IndexController.lua` *(new)* |
+| `SAD_Shared/Modules/Stats` | *(re-paste — bonus slots and boosts)* |
+| `SAD_Shared/Modules/Types` | *(re-paste — three fields)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — two dead skip labels removed)* |
+| `Services/DataService/ProfileTemplate` | *(re-paste — three fields)* |
+| `Services/PlayerDataService/Replication` | *(re-paste — all three replicated)* |
+
+`QuestService` is a **Folder** containing `init` **and** `RewardGrant`.
+`DailyService` and `IndexService` reach `RewardGrant` through
+`QuestService.RewardGrant` — the same shape `NestService.Zones` uses.
+
+`Time` must be installed **before** `QuestService` and `DailyService`, and
+`DailyConfig` before `Stats` (which now reads boost definitions from it).
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -2197,9 +2226,128 @@ Rename it back.
 
 ---
 
+## Step 19 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][IndexService] Ready. 35 species to discover, 6 milestone(s)
+[SAD/S][QuestService] Ready. 12 daily, 6 weekly, 15 metrics
+[SAD/S][DailyService] Ready. 7-day cycle, 5 streak milestone(s)
+[SAD/C][QuestController] Ready. 12 daily, 6 weekly in the pools
+[SAD/C][IndexController] Ready. 35 species across 4 pages
+```
+
+`15 metrics` is the check that matters: `QuestService` **asserts** at boot that
+the metrics quests name and the emitters that feed them are the same set. Add a
+quest with a metric nothing emits and the server refuses to start.
+
+**2. Three screens.** Left rail: 🎁 Daily, ✅ Quests, 📖 Index.
+
+- **Quests** — three dailies and three weeklies with live progress bars.
+- **Daily** — seven rows, the next one claimable, the rest done or locked,
+  with a countdown to the next UTC midnight.
+- **Index** — one page per zone, undiscovered species as `???` with their
+  rarity and odds still shown.
+
+**3. Progress is automatic.** Steal an egg and watch `Steal 5 wild eggs` move.
+Collect income and watch `Collect income 5 times`. Nothing is polled — each
+metric is one signal connection.
+
+**4. Claim once, and only once.** docs/13's hazard:
+
+```lua
+local Q = require(game.ServerScriptService.SAD_Server.Services.QuestService)
+local p = game.Players:GetPlayers()[1]
+Q.Bump(p, "incomeCollected", 99)
+print(Q.Claim(p, "collect5"))   -- true
+print(Q.Claim(p, "collect5"))   -- false, already claimed
+```
+
+Fossils move exactly once. The claim is marked **before** the grant, which is
+the whole defence: two calls racing both read an unclaimed state, but only the
+first write survives to reach the reward.
+
+**5. Cross a UTC day boundary.** docs/13's other hazard, and the one that needs
+faking time:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local D = require(game.ServerScriptService.SAD_Server.Services.DailyService)
+local Time = require(game.ReplicatedStorage.SAD_Shared.Modules.Time)
+
+print(D.Claim(p))                      -- true, day 1
+print(D.Claim(p))                      -- false, come back tomorrow
+
+-- Pretend it is tomorrow by passing the time in rather than waiting.
+local tomorrow = os.time() + 86400
+print(D.Claim(p, tomorrow))            -- true, day 2, streak 2
+print(PDS.Get(p).Daily.Streak)         -- 2
+```
+
+**6. Break a streak and rebuild it.**
+
+```lua
+local later = os.time() + 86400 * 3    -- skipped a day
+print(D.Claim(p, later))               -- true
+local d = PDS.Get(p).Daily
+print(d.Streak, d.DayIndex, d.BestStreak)   -- 1, 1, 2
+```
+
+The cycle restarts at day 1 and the streak at 1, but **BestStreak does not
+move** — docs/05 §7's "resets on a missed day; streak bonus persists".
+
+**7. Discover a species.** Hatch anything you have not hatched before. A
+takeover fires: `NEW SPECIES · Dryosaurus · 4 / 35`. Reach ten and an Index
+milestone pays out on top.
+
+```lua
+local Idx = require(game.ServerScriptService.SAD_Server.Services.IndexService)
+print(Idx.Discovered(PDS.Get(p)), Idx.Total(), Idx.Completion(PDS.Get(p)))
+```
+
+**Total is 35, not 60.** A player who finds every species in V1 reads 100 %.
+
+**8. Rewards are one function.** Grant one by hand and watch every field land:
+
+```lua
+local RG = require(game.ServerScriptService.SAD_Server.Services.QuestService).RewardGrant
+print(RG.Give(p, { Fossils = 1000, Dna = 25, Egg = "rare",
+    Boost = { Id = "luckPotion", Secs = 900 }, LuckNodes = 1 }, "test"))
+```
+
+Then confirm the boost is *real*, not decorative:
+
+```lua
+local Stats = require(game.ReplicatedStorage.SAD_Shared.Modules.Stats)
+print(Stats.Luck(PDS.Get(p)))                        -- includes +1.0
+print(Stats.Luck(PDS.Get(p), os.time() + 1000))      -- expired, back down
+```
+
+**9. Fossils scale with rebirths, DNA does not.** docs/05 §7:
+
+```lua
+PDS.Update(p, function(d) d.Rebirths = 10 end, "test")
+print(RG.Give(p, { Fossils = 1000, Dna = 25 }, "test"))  -- 10,000 Fossils, 25 DNA
+```
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Server refuses to boot naming a metric | A quest names a metric nothing emits — that is `ValidateEmitters` working |
+| A streak breaks on a double-claim | "same day" being treated as a break; `Time.StreakState` names three cases, not two |
+| The day rolls at the wrong hour | Something using `os.date` or a duration instead of `Time.DayIndex` |
+| Quests reshuffle on a server hop | The roll must be seeded on `(userId, day)`, never randomly |
+| A claimed quest can be claimed again | The claim marked *after* the grant instead of before |
+| Index reads 58 % when everything is found | A hardcoded denominator of 60 instead of `IndexConfig.Total` |
+| A Luck Potion does nothing | `DailyConfig` not installed before `Stats`, so boost definitions do not resolve |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,147 assertions** without Studio:
+Syntax-checks every source file and runs **3,428 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2227,6 +2375,7 @@ Fetches the Luau CLI on first run.
 | `tests/step16_spec.lua` | All four severities against docs/08 §5, a strict priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back downward, payload sanitising against nesting/NaN/long keys and idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own floor |
 | `tests/step17_spec.lua` | The published weather table, the Clear share for V1 *and* the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, and Prime's chance proven flat while its count rises |
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
+| `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

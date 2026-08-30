@@ -34,11 +34,12 @@ game = { GetService = function(_, _n) return { WaitForChild = function() return 
 local _realRequire = require
 require = function(t) if type(t) == "table" then return t end return _realRequire(t) end
 
---@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
+--@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
 
 for name, mod in pairs({ GameConfig = GameConfig, RarityConfig = RarityConfig, MutationConfig = MutationConfig,
 	DinoConfig = DinoConfig, ParkConfig = ParkConfig, ZoneConfig = ZoneConfig,
-	UpgradeConfig = UpgradeConfig, RebirthConfig = RebirthConfig }) do
+	UpgradeConfig = UpgradeConfig, RebirthConfig = RebirthConfig ,
+	DailyConfig = DailyConfig }) do
 	_shared.Config[name] = mod
 end
 

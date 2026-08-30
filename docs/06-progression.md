@@ -86,7 +86,13 @@ best mutation you've owned, star record, times hatched, and its rarity odds.
 - `bestStar`
 - `count`
 
-Completion % = discovered species ÷ 60, shown on the HUD. Mutation completion is
+Completion % = discovered species ÷ **the number that exist**, shown on the HUD.
+
+> Sixty is the finished game; V1 ships 35. `IndexConfig.Total` counts
+> `DinoConfig` rather than hardcoding a number, so a V1 player who has found
+> every dinosaur reads **100 %**, not 58 % — and milestones 40/50/60 are
+> unreachable until the species ship. Unreachable is pending; a hardcoded 60
+> would be wrong. Mutation completion is
 a separate, optional 100 %-plus track (60 species × 18 mutations = 1,080 entries)
 purely for the obsessives — with no gating attached, so it never feels
 mandatory.

@@ -148,6 +148,9 @@ export type Profile = {
 	Upgrades: Dict<number>,
 	Defences: Dict<number>,
 	LuckNodes: number,
+	BonusDinoSlots: number,
+	BonusVaultSlots: number,
+	Titles: Dict<boolean>,
 
 	Dinos: Dict<DinoEntry>,
 	Eggs: Dict<EggEntry>,

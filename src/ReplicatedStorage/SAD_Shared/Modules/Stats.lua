@@ -34,6 +34,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local GameConfig = require(Shared.Config.GameConfig)
+local DailyConfig = require(Shared.Config.DailyConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 
@@ -83,6 +84,38 @@ local function effect(data, trackId: string): number
 end
 
 --[[
+	The total from every ACTIVE boost of one kind (docs/05 §7's Luck Potion and
+	Mutation Serum).
+
+	`data.Boosts[id]` is an expiry timestamp, so an expired boost contributes
+	nothing without needing to be cleaned up first - which matters, because the
+	client computes stats too and cannot write to the profile. Sweeping expired
+	entries is bookkeeping, done on save; correctness does not depend on it.
+
+	`now` is injectable so the spec can watch one expire rather than waiting.
+]]
+local function boostTotal(data, kind: string, now: number?): number
+	local boosts = data and data.Boosts
+	if not boosts then
+		return 0
+	end
+
+	local at = now or os.time()
+	local total = 0
+	for boostId, expiry in boosts do
+		if expiry > at then
+			local definition = DailyConfig.GetBoost(boostId)
+			if definition and definition.Kind == kind then
+				total += definition.Amount
+			end
+		end
+	end
+	return total
+end
+
+Stats.BoostTotal = boostTotal
+
+--[[
 	The whole derived stat block for a profile.
 
 	Allocates a table per call, which is fine everywhere it is used today
@@ -95,7 +128,8 @@ function Stats.Of(data)
 
 	return {
 		-- Park
-		DinoSlots = effect(data, "dinoSlots") + RebirthConfig.BonusDinoSlots(rebirths),
+		DinoSlots = effect(data, "dinoSlots") + RebirthConfig.BonusDinoSlots(rebirths)
+			+ ((data and data.BonusDinoSlots) or 0),
 		DinoStorage = effect(data, "dinoStorage"),
 		Incubators = effect(data, "incubators"),
 		IncubationMult = effect(data, "incubatorSpeed"),
@@ -103,12 +137,8 @@ function Stats.Of(data)
 		BankSecs = effect(data, "bankSize"),
 
 		-- Explorer
-		Luck = effect(data, "eggSense")
-			+ RebirthConfig.LuckBonus(rebirths)
-			+ ((data and data.LuckNodes) or 0) * GameConfig.LuckPerNode,
-		MutLuck = math.clamp(
-			effect(data, "incubatorGenetics") + RebirthConfig.MutLuckBonus(rebirths),
-			0, Stats.MaxMutLuck),
+		Luck = Stats.Luck(data),
+		MutLuck = Stats.MutLuck(data),
 		MoveSpeedMult = effect(data, "runnersLegs") * (1 + RebirthConfig.MoveSpeedBonus(rebirths)),
 		CarryPenaltyMult = effect(data, "strongBack"),
 		EggCapacity = effect(data, "eggPouch"),
@@ -135,7 +165,9 @@ end
 -- because two drifting copies is exactly what this module exists to prevent.
 
 function Stats.DinoSlots(data): number
-	return effect(data, "dinoSlots") + RebirthConfig.BonusDinoSlots((data and data.Rebirths) or 0)
+	return effect(data, "dinoSlots")
+		+ RebirthConfig.BonusDinoSlots((data and data.Rebirths) or 0)
+		+ ((data and data.BonusDinoSlots) or 0)
 end
 
 function Stats.DinoStorage(data): number
@@ -160,16 +192,20 @@ end
 
 --- The player-derived part of luck. Uncapped on purpose - see the note above
 --- Stats.MaxMutLuck. `EggService.LuckFrom` adds the zone bonus and clamps to 5.0.
-function Stats.Luck(data): number
+function Stats.Luck(data, now: number?): number
 	local rebirths = (data and data.Rebirths) or 0
 	return effect(data, "eggSense")
 		+ RebirthConfig.LuckBonus(rebirths)
 		+ ((data and data.LuckNodes) or 0) * GameConfig.LuckPerNode
+		+ boostTotal(data, "luck", now)
 end
 
-function Stats.MutLuck(data): number
+function Stats.MutLuck(data, now: number?): number
 	local rebirths = (data and data.Rebirths) or 0
-	return math.clamp(effect(data, "incubatorGenetics") + RebirthConfig.MutLuckBonus(rebirths),
+	return math.clamp(
+		effect(data, "incubatorGenetics")
+			+ RebirthConfig.MutLuckBonus(rebirths)
+			+ boostTotal(data, "mutLuck", now),
 		0, Stats.MaxMutLuck)
 end
 

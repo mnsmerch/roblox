@@ -40,6 +40,7 @@ ReplicatedStorage
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
     │   ├── Patch                    (ModuleScript)  structural diff + apply (shared)
     │   ├── Economy                  (ModuleScript)  income/sell/bank maths (shared)
+    │   ├── Time                     (ModuleScript)  UTC day/week indices (shared)
     │   ├── Stats                    (ModuleScript)  derived player stats (shared)
     │   ├── AssetBuilder             (ModuleScript)  placeholder model generation
     │   ├── Signal                   (ModuleScript)  lightweight event class
@@ -81,10 +82,11 @@ ServerScriptService
         ├── WeatherService           selection, effects; visuals are the client's
         ├── EventService             scheduler, participation, rewards
         │   └── Handlers             one ModuleScript per event
-        ├── QuestService             daily/weekly progress
-        ├── DailyService             7-day rewards, streaks
+        ├── QuestService             daily/weekly rolls, progress, claims
+        │   └── RewardGrant          the one place a reward is paid out
+        ├── DailyService             the 7-day chest and the streak
         ├── RebirthService           rebirth validation + grants
-        ├── IndexService             discovery tracking + milestones
+        ├── IndexService             discovery, completion %, milestones
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, gamepass ownership cache
         ├── LeaderboardService       OrderedDataStore aggregation
@@ -112,8 +114,8 @@ StarterPlayer
             ├── EggCarryController   carry visuals, chase HUD
             ├── ParkController       income floaters, park-side visuals
             ├── ShopController       the three upgrade boards
-            ├── IndexController
-            ├── QuestController
+            ├── IndexController      the book, one page per zone
+            ├── QuestController      the quest board and the daily chest
             ├── TeleportController   the zone wheel and PARK teleport
             ├── MinimapController
             ├── WeatherController    Lighting, locally, so it always reverts
