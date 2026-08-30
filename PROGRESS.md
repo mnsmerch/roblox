@@ -5,12 +5,16 @@ accident. Updated at the end of every build step.
 
 ## Status: **All 24 build steps complete.** The V1 game is written.
 
-**It has never run in Roblox Studio.** Twenty-four steps of code and 5,095
-offline assertions, and not one Play test. That is the single most important
-thing on this page: everything below describes code that is *correct against
-its own specification*, not code that has been seen to work. SETUP.md has a
-per-step install table and Play test for every one of them, and running them is
-the next thing that should happen.
+**It has now run in Roblox Studio once.** The server booted clean — 25 services,
+config validation 12/12, 24 plots, 4 zones, 48 nests, 122 eggs. The **client did
+not**: it died in `HUDController.Init` before a single controller finished
+loading.
+
+Four bugs came out of that one run, and all four are fixed (findings 49–52).
+Three of them were invisible to 5,097 offline assertions by construction — they
+live in code that needs a Roblox Instance, a Roblox enum, or a running server to
+execute. That is the honest boundary of what the specs prove, and one Play test
+found more than the last four build steps of spec-writing did.
 
 ## Completed
 
@@ -1085,11 +1089,14 @@ current value, then on every change at or under that path. No polling anywhere.
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 98 source files and runs **5,095
-assertions** outside Roblox. Last run: **5,095 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 98 source files and runs **5,097
+assertions** outside Roblox. Last run: **5,097 passed, 0 failed.**
 
-**What these do and do not prove.** They prove the code is correct against its
-own specification: every published number in docs/00–15 reproduced from the
+**What these do and do not prove — now demonstrated, not claimed.** The first
+Studio run found four bugs (findings 49–52) that 5,097 assertions had passed
+over. Three were unreachable by construction: a Roblox `Instance` property, a
+Roblox enum's spelling, and wiring inside a service's `Start()`. They prove the
+code is correct against its own specification: every published number in docs/00–15 reproduced from the
 formula that generates it, every cap driven past, every ordering that could pay
 twice modelled as a state machine and crashed at each step. They prove nothing
 about Roblox. `Net`, `Log`, both Bootstraps, every service's lifecycle and
@@ -1758,6 +1765,92 @@ Bugs the specs caught before they shipped:
     warned about fired. A tell that outlasts its own warning is worse than no
     tell. The hold now takes the archetype's own `AbilityWindupSecs` as its
     duration.
+
+49. **The client died on its first Play, in `HUDController.Init`, on a line
+    written in Step 5.**
+
+    ```
+    Rarity is not a valid member of Frame "…SAD_UI.Root.PromptLayer.CarryPanel"
+    [SAD] Client boot aborted: Init failed for HUDController
+    ```
+
+    `Widgets.Panel` returns a real `Frame`. A Roblox `Instance` is not a Lua
+    table, so `carryPanel.Rarity = rarityLabel` does not add a field — it
+    throws. Six of them: `carryPanel.Rarity/.Distance`, `flashPanel.Label`,
+    `hatchPanel.Title/.Subtitle/.Odds`.
+
+    **No offline spec could ever have caught this**, and that is the part worth
+    keeping. The specs never construct an `Instance`; they cannot, outside
+    Roblox. Nineteen build steps ran over this file and 5,097 assertions passed
+    with it broken, because the assertion that would have failed is "does
+    Roblox accept this property", and only Roblox can answer it.
+
+    Fixed by holding each panel's children in a plain table beside the
+    instance — which is the shape `Widgets.Chip` already returned, and the shape
+    every controller written after Step 5 uses. `HUDController` was the only
+    offender; grepped, not assumed.
+
+    The general rule, since the inconsistency is what invited it: `Widgets.Panel`
+    returns a bare Instance while the other widgets return handle tables. The
+    two conventions living side by side is the actual defect, and it is worth
+    unifying before the next panel is written.
+
+50. **`AnalyticsConfig.FieldKeys` were the wrong case, and the guard I wrote for
+    exactly this printed the fix.**
+
+    ```
+    custom field 1 is 'CustomField01' on this Roblox version, not 'customField01'
+    ```
+
+    Three warnings, one per key, naming the correction. Every custom field on
+    every event would have been dropped — silently, with the dashboard showing
+    events that looked complete and carried no dimensions.
+
+    This is the one finding here that is a *success*. The config is deliberately
+    dependency-free, so the keys are literals; deviation 113 added a boot-time
+    comparison against `Enum.AnalyticsCustomFieldKeys` on the grounds that a
+    literal can be wrong. It was wrong, on the first run, and the check turned a
+    silent data loss into a one-line fix.
+
+51. **The coverage check was measuring "has fired", not "has a source".**
+
+    ```
+    Ready, but 22 event(s) in docs/14 have no source yet: ChaseStarted,
+    DailyClaimed, DataSaveFailed, DinoPlaced, …
+    ```
+
+    All 22 were wired correctly. `wired[name]` was set inside `emit`, which runs
+    when an event actually fires — so at boot, when nothing has happened, two
+    thirds of the catalogue looked missing.
+
+    A check that reports a problem where there is none is worse than no check:
+    it teaches you to ignore its output, and the day it is right you will.
+    `declare` is now called at subscription time and `emit` only logs.
+
+    `tests/step24_spec.lua` now asserts the two lists agree. It needed a new
+    harness feature to do it — `--@SOURCE`, which inlines a file as text —
+    because the wiring lives in `Start()` and no spec can run that. Crude, and
+    the only thing that would have caught this before Studio did.
+
+52. **`LogCustomEvent` rejects a nil player.**
+
+    ```
+    AnalyticsService: instance must be a Player object.
+    ```
+
+    `WeatherStarted` and `ServerEventStarted` are facts about the **server**, so
+    I passed no player. Roblox requires one. Logging them per player would turn
+    "how often does Nest Frenzy fire" into a question about the player count,
+    which is the one thing that report must not depend on.
+
+    Server-scoped events are now attributed to a **reporter**: the lowest UserId
+    present. Deterministic, so two servers never disagree about who reports;
+    exactly one row per occurrence, so a count stays a count. The attribution is
+    arbitrary and is documented as such — read those rows by their event, never
+    by their player. On an empty server the event is dropped, because nobody saw
+    it.
+
+    Caught by the adapter doing its job: one named error, gameplay unaffected.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

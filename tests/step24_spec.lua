@@ -98,6 +98,7 @@ _shared.Modules.Stats = Stats
 --@INJECT Migrations=src/ServerScriptService/SAD_Server/Services/DataService/Migrations.lua@
 --@INJECT Net=src/ReplicatedStorage/SAD_Shared/Modules/Net.lua@
 --@INJECT Theme=src/StarterPlayer/StarterPlayerScripts/SAD_Client/UI/Theme.lua@
+--@SOURCE AnalyticsSource=src/ServerScriptService/SAD_Server/Services/AnalyticsService/init.lua@
 
 local passed, failed = 0, 0
 local function eq(label, got, want)
@@ -212,16 +213,68 @@ do
 	for key in pairs(fields) do
 		count += 1
 		ok("only documented keys are used: " .. key,
-			key == "customField01" or key == "customField02" or key == "customField03")
+			key == "CustomField01" or key == "CustomField02" or key == "CustomField03")
 	end
 	eq("three fields out, six in", count, 3)
-	eq("values are stringified", fields.customField01, "epic")
+	eq("values are stringified", fields.CustomField01, "epic")
 end
 
 -- An event with no declared fields must send nil, not an empty table.
 eq("no fields means nil", AnalyticsConfig.BuildFields("RaidSurvived", { anything = 1 }), nil)
 eq("no attributes means nil", AnalyticsConfig.BuildFields("EggHatched", nil), nil)
 eq("an unknown event means nil", AnalyticsConfig.BuildFields("NotAnEvent", { a = 1 }), nil)
+
+--[[
+	═══ COVERAGE, ASSERTED AGAINST THE SERVICE'S SOURCE ════════════════════════
+	`AnalyticsService.ValidateCoverage` reports any catalogue event nothing
+	fires. Its first version marked an event as covered inside `emit`, which
+	runs when the event ACTUALLY FIRES - so at boot it reported 22 of 46 as
+	having no source, every one of which was wired correctly and had simply not
+	happened yet.
+
+	No offline spec caught that, because none of them could: the wiring lives in
+	`Start`, which needs a Roblox server. So this reads the service's SOURCE and
+	checks the two lists agree - crude, and the only thing here that would have
+	caught it before the first Studio run did.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+section("Every catalogue event is declared by the service")
+
+do
+	local declared = {}
+	for block in AnalyticsSource:gmatch("declare%\(([^)]*)%\)") do
+		for name in block:gmatch('"(%w+)"') do
+			declared[name] = true
+		end
+	end
+
+	local missing = {}
+	for _, name in ipairs(AnalyticsConfig.CustomOrder) do
+		if not declared[name] then
+			table.insert(missing, name)
+		end
+	end
+	if #missing > 0 then
+		table.sort(missing)
+		print("  events with no declare(): " .. table.concat(missing, ", "))
+	end
+	eq("every catalogue event has a source", #missing, 0)
+
+	local extra = {}
+	for name in pairs(declared) do
+		if not AnalyticsConfig.Get(name) then
+			table.insert(extra, name)
+		end
+	end
+	if #extra > 0 then
+		table.sort(extra)
+		print("  declared but not in the catalogue: " .. table.concat(extra, ", "))
+	end
+	eq("nothing is declared that the catalogue does not hold", #extra, 0)
+
+	print(string.format("  %d catalogue events, all declared at subscription time",
+		AnalyticsConfig.CountCustom()))
+end
 
 --------------------------------------------------------------- the funnel
 section("The onboarding funnel (docs/14's most valuable number)")

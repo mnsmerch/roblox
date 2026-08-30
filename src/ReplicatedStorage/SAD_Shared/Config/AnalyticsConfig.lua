@@ -43,15 +43,21 @@ local AnalyticsConfig = {}
 AnalyticsConfig.MaxCustomFields = 3
 
 --[[
-	The custom-field keys, as the strings Roblox expects.
+	The custom-field keys, as the strings Roblox actually expects.
 
 	`Enum.AnalyticsCustomFieldKeys.CustomField01.Name` is the documented way to
-	build this key. The literal is used instead so this module stays
-	dependency-free and testable outside Roblox; `AnalyticsService` asserts the
-	two agree at boot, so a Roblox-side rename fails loudly rather than
-	producing events with fields nobody can query.
+	build these. Literals are used instead so this module stays dependency-free
+	and testable outside Roblox - and `AnalyticsService` compares the two at
+	boot precisely because a literal can be wrong.
+
+	It was. These read `customField01` until the first Studio run, where that
+	check printed three warnings naming the exact fix. Every custom field on
+	every event would have been dropped, silently, with the dashboard showing
+	events that looked complete and had no dimensions.
+
+	Capitalised, which is what the enum's `Name` returns.
 ]]
-AnalyticsConfig.FieldKeys = { "customField01", "customField02", "customField03" }
+AnalyticsConfig.FieldKeys = { "CustomField01", "CustomField02", "CustomField03" }
 
 --[[
 	═══ OUR BUDGET, NOT ROBLOX'S ═══════════════════════════════════════════════

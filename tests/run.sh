@@ -9,6 +9,16 @@
 # and this script inlines each file as `local Name = (function() ... end)()`
 # in the order given. Multiple markers per spec are allowed, so a spec can set
 # up shims between injections.
+#
+# A spec can also ask for a file as TEXT rather than as code:
+#
+#   --@SOURCE Name=path/to/file.lua@
+#
+# which inlines it as `local Name = [==[ ... ]==]`. That exists for the one
+# thing the specs otherwise cannot reach: wiring that lives inside a service's
+# Start(), which needs a Roblox server to run. The first Studio run of this
+# project found a coverage check measuring the wrong thing precisely there, so
+# a crude source check beats no check.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -55,6 +65,18 @@ for spec in tests/*_spec.lua; do
           echo "local $name = (function()"
           cat "$path"
           echo "end)()"
+        done
+        ;;
+      "--@SOURCE "*)
+        pairs="${line#--@SOURCE }"; pairs="${pairs%@}"
+        for pair in $pairs; do
+          name="${pair%%=*}"
+          path="${pair#*=}"
+          # A long-bracket level nothing in this codebase uses, so source
+          # containing ]] or ]=] cannot close the literal early.
+          echo "local $name = [=====["
+          cat "$path"
+          echo "]=====]"
         done
         ;;
       *)

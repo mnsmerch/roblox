@@ -2,9 +2,9 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status: all 24 build steps complete — and none of them has been run in
-> Roblox Studio.** 5,095 offline assertions prove the code correct against its
-> own specification; they prove nothing about Roblox. See
+> **Status: all 24 build steps complete. First Studio run done — server boots
+> clean, client fixed.** That run found four bugs 5,097 offline assertions had
+> passed over, three of them unreachable without Roblox. See
 > [PROGRESS.md](PROGRESS.md) for what exists and what is still owed,
 > [QUICKSTART.md](QUICKSTART.md) to run it, and [SETUP.md](SETUP.md) for the
 > per-step Studio placement, test lists and the launch checklist.
@@ -21,7 +21,7 @@ dinosaur chases you home. Then other players try to steal your dinosaurs.
 offline test to a full Studio setup.
 
 ```bash
-./tests/run.sh    # 5,095 assertions, no Studio needed
+./tests/run.sh    # 5,097 assertions, no Studio needed
 ```
 
 ## Repository layout

@@ -134,6 +134,23 @@ local function call(methodName: string, ...): boolean
 	return false
 end
 
+--[[
+	Who a server-scoped event is attributed to. Lowest UserId present, so the
+	choice is deterministic rather than "whoever `GetPlayers` happened to return
+	first" - which would attribute the same event to different people on two
+	servers and make a per-player read of these rows even more misleading than
+	it already is.
+]]
+local function reporter(): Player?
+	local best = nil
+	for _, candidate in Players:GetPlayers() do
+		if not best or candidate.UserId < best.UserId then
+			best = candidate
+		end
+	end
+	return best
+end
+
 -- ── Public logging ──────────────────────────────────────────────────────────
 
 function AnalyticsService.Custom(player: Player?, eventName: string, value: number?, attributes)
@@ -153,8 +170,31 @@ function AnalyticsService.Custom(player: Player?, eventName: string, value: numb
 		return false
 	end
 
+	--[[
+		═══ ROBLOX REQUIRES A PLAYER; SOME OF OUR EVENTS DO NOT HAVE ONE ═══════
+		`LogCustomEvent` errors with "instance must be a Player object" on nil.
+		The first Studio run said so, once, exactly as the adapter is built to.
+
+		But `WeatherStarted` and `ServerEventStarted` are facts about the SERVER,
+		not about a player. Logging them per player would turn "how often does
+		Nest Frenzy fire" into a question about the player count, which is the
+		one thing that report must not depend on.
+
+		So a server-scoped event is attributed to a single REPORTER: the lowest
+		UserId present. Deterministic, so two servers never disagree about who
+		reports; exactly one row per occurrence, so the count stays a count. The
+		attribution is arbitrary and is meant to be - read these rows by their
+		event, never by their player.
+		═══════════════════════════════════════════════════════════════════════
+	]]
+	local subject = player or reporter()
+	if not subject then
+		-- An empty server. Nothing to attribute it to, and nobody saw it.
+		return false
+	end
+
 	byEvent[eventName] = (byEvent[eventName] or 0) + 1
-	return call("LogCustomEvent", player, eventName, value or 1,
+	return call("LogCustomEvent", subject, eventName, value or 1,
 		AnalyticsConfig.BuildFields(eventName, attributes))
 end
 
@@ -247,19 +287,27 @@ end
 
 -- ── Wiring ──────────────────────────────────────────────────────────────────
 
---- Marks an event as having a source, and logs it. Every subscription below
---- goes through this so `wired` cannot drift from what actually fires.
-local function emit(eventName: string, player: Player?, value: number?, attributes)
-	wired[eventName] = true
-	return AnalyticsService.Custom(player, eventName, value, attributes)
-end
+--[[
+	═══ COVERAGE IS ABOUT HAVING A SOURCE, NOT ABOUT HAVING FIRED ══════════════
+	The first version of this marked `wired[name]` inside `emit`, which runs
+	when an event actually fires. At boot nothing has fired, so the first
+	Studio run reported 22 of 46 events "with no source" - every one of which
+	was wired correctly and simply had not happened yet.
 
---- Declares an event as wired without firing it - for the handful whose source
---- is a branch that may not run in a given session.
+	The check was measuring the wrong thing, and the wrong thing looked exactly
+	like a real problem. `declare` is now called at SUBSCRIPTION time by every
+	handler below, and `emit` only logs.
+	═══════════════════════════════════════════════════════════════════════════
+]]
 local function declare(...)
 	for _, name in { ... } do
 		wired[name] = true
 	end
+end
+
+--- Logs. Says nothing about coverage - see above.
+local function emit(eventName: string, player: Player?, value: number?, attributes)
+	return AnalyticsService.Custom(player, eventName, value, attributes)
 end
 
 local function deviceClass(player: Player): string
@@ -303,6 +351,8 @@ function AnalyticsService.Start(app)
 	end
 
 	-- ── Sessions and health ────────────────────────────────────────────────
+	declare("SessionStart", "SessionEnd", "DataSaveFailed")
+
 	local dataService = service("DataService")
 	if dataService then
 		dataService.SaveStalled:Connect(function(player, secs)
@@ -347,16 +397,12 @@ function AnalyticsService.Start(app)
 				else "ExploitFlag"
 			emit(name, player, 1, { kind = kind, remote = tostring(detail), delta = tostring(detail) })
 		end)
-		--[[
-			Both names are declared because the branch above only fires one of
-			them per flag kind, and a server where nobody cheated would
-			otherwise report half of this wiring as missing.
-		]]
-		declare("ExploitFlag", "SuspiciousMovement")
 	end
+	declare("ExploitFlag", "SuspiciousMovement")
 	declare("ConfigValidationFailed")
 
 	-- ── The core loop ──────────────────────────────────────────────────────
+	declare("EggStolen", "EggLost", "EggDeposited")
 	local eggService = service("EggService")
 	if eggService then
 		eggService.EggPickedUp:Connect(function(player, token, nest)
@@ -376,6 +422,7 @@ function AnalyticsService.Start(app)
 		end)
 	end
 
+	declare("ChaseStarted", "ChaseCaught", "ChaseEscaped")
 	local wildAI = service("WildAIService")
 	if wildAI then
 		wildAI.ChaseStarted:Connect(function(player, chase)
@@ -396,6 +443,7 @@ function AnalyticsService.Start(app)
 		declare("ChaseCaught", "ChaseEscaped")
 	end
 
+	declare("EggHatched")
 	local incubation = service("IncubationService")
 	if incubation then
 		incubation.Hatched:Connect(function(player, uid, entry)
@@ -407,6 +455,7 @@ function AnalyticsService.Start(app)
 	end
 	declare("IncubationStarted")
 
+	declare("DinoPlaced", "DinoStored")
 	local dinos = service("DinosaurService")
 	if dinos then
 		dinos.DinoPlaced:Connect(function(player, uid, entry)
@@ -419,6 +468,7 @@ function AnalyticsService.Start(app)
 	declare("DinoSold", "DinoFused")
 
 	-- ── PvP ────────────────────────────────────────────────────────────────
+	declare("StealAttempted", "StealFailed", "StealCompleted", "PlayerRobbed")
 	local steal = service("StealService")
 	if steal then
 		steal.StealStarted:Connect(function(thief, ownerUserId, uid)
@@ -441,6 +491,7 @@ function AnalyticsService.Start(app)
 		"VaultUsed", "RevengeMarkUsed")
 
 	-- ── Content ────────────────────────────────────────────────────────────
+	declare("ZoneEntered")
 	local zones = service("NestService")
 	zones = zones and zones.Zones
 	if zones then
@@ -451,6 +502,7 @@ function AnalyticsService.Start(app)
 		end)
 	end
 
+	declare("ServerEventStarted")
 	local events = service("EventService")
 	if events then
 		events.Started:Connect(function(eventId)
@@ -465,6 +517,7 @@ function AnalyticsService.Start(app)
 	end
 	declare("ServerEventJoined", "ServerEventReward")
 
+	declare("WeatherStarted")
 	local weather = service("WeatherService")
 	if weather then
 		weather.Changed:Connect(function(weatherId)
@@ -472,6 +525,7 @@ function AnalyticsService.Start(app)
 		end)
 	end
 
+	declare("QuestCompleted")
 	local quests = service("QuestService")
 	if quests then
 		quests.QuestCompleted:Connect(function(player, kind, questId)
@@ -479,6 +533,7 @@ function AnalyticsService.Start(app)
 		end)
 	end
 
+	declare("DailyClaimed")
 	local daily = service("DailyService")
 	if daily then
 		daily.Claimed:Connect(function(player, dayIndex, streak)
@@ -486,6 +541,7 @@ function AnalyticsService.Start(app)
 		end)
 	end
 
+	declare("IndexDiscovered")
 	local index = service("IndexService")
 	if index then
 		index.SpeciesDiscovered:Connect(function(player, speciesId, entry)
@@ -537,6 +593,7 @@ function AnalyticsService.Start(app)
 	end
 
 	-- ── Monetization ───────────────────────────────────────────────────────
+	declare("GamepassPurchased", "ProductPurchased")
 	local purchases = service("PurchaseService")
 	if purchases then
 		purchases.PassPurchased:Connect(function(player, key)

@@ -52,6 +52,25 @@ local chips = {}
 local buttons = {}
 local actionPrompt
 local carryPanel
+--[[
+	═══ HANDLES LIVE BESIDE THE INSTANCE, NEVER ON IT ══════════════════════════
+	A Roblox `Instance` is not a Lua table: `carryPanel.Rarity = label` does not
+	add a field, it THROWS - "Rarity is not a valid member of Frame".
+
+	The first Studio run of this project died here, in `HUDController.Init`,
+	before a single controller finished loading. It had been written this way
+	since Step 5 and no offline spec could see it, because the specs never
+	construct an Instance.
+
+	So each panel's children are held in a plain table beside it, which is the
+	shape `Widgets.Chip` already returned and the shape every controller
+	written after Step 5 uses.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+local carryParts = {}
+local flashParts = {}
+local hatchParts = {}
+
 local chaseBanner, chaseVignette
 local flashPanel
 local flashToken = 0
@@ -288,8 +307,8 @@ local function buildCarryPanel()
 		Parent = UIController.Layer("prompt"),
 	})
 
-	carryPanel.Rarity = rarityLabel
-	carryPanel.Distance = distanceLabel
+	carryParts.Rarity = rarityLabel
+	carryParts.Distance = distanceLabel
 end
 
 --[[
@@ -374,7 +393,7 @@ local function buildFlash()
 		Parent = UIController.Layer("notification"),
 	})
 
-	flashPanel.Label = label
+	flashParts.Label = label
 end
 
 --[[
@@ -440,9 +459,9 @@ local function buildHatch()
 		Parent = UIController.Layer("takeover"),
 	})
 
-	hatchPanel.Title = title
-	hatchPanel.Subtitle = subtitle
-	hatchPanel.Odds = odds
+	hatchParts.Title = title
+	hatchParts.Subtitle = subtitle
+	hatchParts.Odds = odds
 end
 
 local function buildRailToggle()
@@ -578,13 +597,13 @@ function HUDController.SetCarry(info)
 	carryPanel.Visible = true
 
 	local suffix = if info.Count and info.Count > 1 then string.format("  x%d", info.Count) else ""
-	carryPanel.Rarity.Text = string.format("🥚 %s EGG%s", string.upper(info.Rarity or "?"), suffix)
-	carryPanel.Rarity.TextColor3 = info.RarityColor or Theme.Color.Text
+	carryParts.Rarity.Text = string.format("🥚 %s EGG%s", string.upper(info.Rarity or "?"), suffix)
+	carryParts.Rarity.TextColor3 = info.RarityColor or Theme.Color.Text
 
 	if info.Distance then
-		carryPanel.Distance.Text = string.format("↑ %d studs to your park", math.floor(info.Distance))
+		carryParts.Distance.Text = string.format("↑ %d studs to your park", math.floor(info.Distance))
 	else
-		carryPanel.Distance.Text = "Get to your park!"
+		carryParts.Distance.Text = "Get to your park!"
 	end
 end
 
@@ -629,8 +648,8 @@ function HUDController.Flash(text: string, color: Color3?, duration: number?)
 	local token = flashToken
 
 	flashPanel.Visible = true
-	flashPanel.Label.Text = text
-	flashPanel.Label.TextColor3 = color or Theme.Color.Text
+	flashParts.Label.Text = text
+	flashParts.Label.TextColor3 = color or Theme.Color.Text
 
 	local stroke = flashPanel:FindFirstChildOfClass("UIStroke")
 	if stroke then
@@ -662,11 +681,11 @@ function HUDController.ShowReveal(info)
 	local color = info.Color or Theme.Color.Accent
 
 	hatchPanel.Visible = true
-	hatchPanel.Title.Text = info.Title or ""
-	hatchPanel.Title.TextColor3 = color
-	hatchPanel.Subtitle.Text = info.Subtitle or ""
-	hatchPanel.Odds.Text = info.Headline or ""
-	hatchPanel.Odds.TextColor3 = color
+	hatchParts.Title.Text = info.Title or ""
+	hatchParts.Title.TextColor3 = color
+	hatchParts.Subtitle.Text = info.Subtitle or ""
+	hatchParts.Odds.Text = info.Headline or ""
+	hatchParts.Odds.TextColor3 = color
 
 	local stroke = hatchPanel:FindFirstChildOfClass("UIStroke")
 	if stroke then
