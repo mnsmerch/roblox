@@ -984,6 +984,40 @@ its material, and the secondary takes the crests, plates, frills and sails that
 the body plan already separates out. Two mutations, two colours, on parts that
 were already distinct.
 
+### The arity check (finding 138)
+
+```
+tests/run.sh   --@TREE Name=src@     -- inlines every .lua file as { [path] = source }
+```
+
+**One argument short, and a main panel would not open.** The third Studio run
+threw `Format:154: attempt to compare nil <= number` when the Index was opened.
+`Format.Odds(weight, total)` had been called with one argument since Step 19;
+`total` was nil and the `weight >= total` compare blew up.
+
+**Nothing in the suite could have caught it.** Luau's analyser resolves a
+`require` across files to `any`, so it never sees the signature. The specs never
+execute a controller's render path. And it is a one-character mistake inside a
+call that spans three lines.
+
+So `run.sh` grew a third marker. `--@INJECT` inlines a module as code and
+`--@SOURCE` inlines one file as text; `--@TREE` inlines a whole directory as
+`{ [path] = source }`. A spec can then assert something about **every** file
+rather than a hand-listed handful, which is the only shape that works for this
+class of bug — the mistake is never in the file you thought to list.
+
+`tests/call_arity_spec` extracts the declared parameters of the seven pure
+shared modules, then counts the arguments at all 136 call sites with a
+bracket-depth scan. An untyped parameter counts as optional, which is not
+laziness: `Patch.Diff(previous, current, basePath, depth)` defaults its last two
+with `or`, and treating an untyped tail as required would report a correct call
+as broken. False negatives here cost nothing; false positives get the check
+switched off.
+
+The scanner also tests itself against a fixture with a one-argument call, a
+correct call, an over-long call and a call whose arguments are themselves calls
+— because a checker with nothing behind it is worse than no checker.
+
 ### StarterPlayerScripts/SAD_Client/UI
 
 | Object | Type | Purpose |
@@ -1197,11 +1231,14 @@ current value, then on every change at or under that path. No polling anywhere.
 | 134 | `AssetBuilder` stamps a `Tint` attribute on every part | So `MutationSkin` can tell a crest from a flank without re-deriving the body plan, and so real art dropped in without the attribute gets the hide treatment — the correct fallback rather than a failure | — |
 | 135 | Added ConfigValidator **rule 13**: every shipped mutation has a visual whose glow matches its announcement | A mutation with no visual renders as if it had none, which is only noticeable if you already know what you were looking for. It also refuses a material outside the seven-name allowlist: naming a terrain-only material on a Part is a silent no-op, not an error | docs/11 §5 |
 | 136 | Rule 13 was written as `x and f()` and would have reported nothing on failure | An `and` expression truncates a call to a single value, so `problems` was nil on every failure path and the loop over it would have errored into the generic "a validation rule itself errored". Caught while writing the spec, before it ran. Rewritten as a type check | — |
+| 137 | `Format.Odds` was called with one of its two arguments in `IndexController` | Shipped in Step 19 and found by opening the Index in Studio. `total` was nil, the `weight >= total` compare threw, and the collection book never opened — the panel was unreachable for five build steps with every spec green | — |
+| 138 | Added `--@TREE` to the test harness, and a call-arity spec over the whole tree | Luau resolves a cross-file `require` to `any`, so the analyser never sees a signature; the specs never run a controller's render path. Neither could have caught #137. `--@TREE` inlines every source file as `{ [path] = source }` so a spec can assert about all of them at once — the mistake is never in the file you thought to hand-list | — |
+| 139 | The arity scan treats an **untyped** parameter as optional | `Patch.Diff(previous, current, basePath, depth)` is unannotated and defaults its last two with `or`, so counting an untyped tail as required reports a correct call as broken. A false positive gets a check deleted; a false negative just leaves it no worse than before | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 100 source files and runs **6,862
-assertions** outside Roblox. Last run: **6,862 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 100 source files and runs **6,884
+assertions** outside Roblox. Last run: **6,884 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed

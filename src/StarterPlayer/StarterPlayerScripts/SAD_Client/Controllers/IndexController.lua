@@ -162,8 +162,16 @@ local function refresh()
 			row.Name.TextColor3 = Theme.Color.TextDim
 			row.Detail.Text = string.format("%s  ·  %s",
 				string.upper(tier.DisplayName),
-				Format.Odds(RarityConfig.ZoneWeights[activeZone]
-					and RarityConfig.ZoneWeights[activeZone][species.Rarity] or 0))
+				--[[
+					`Format.Odds(weight, total)` takes two arguments. This
+					passed one, so `total` was nil and opening the Index threw
+					on the `weight >= total` compare - the panel never opened.
+				]]
+				Format.Odds(
+					RarityConfig.ZoneWeights[activeZone]
+						and RarityConfig.ZoneWeights[activeZone][species.Rarity]
+						or 0,
+					RarityConfig.WeightTotal))
 			row.Panel.BackgroundTransparency = 0.5
 		else
 			local mutations = {}

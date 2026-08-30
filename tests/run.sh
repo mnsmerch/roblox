@@ -19,6 +19,16 @@
 # Start(), which needs a Roblox server to run. The first Studio run of this
 # project found a coverage check measuring the wrong thing precisely there, so
 # a crude source check beats no check.
+#
+# And a whole directory of sources at once:
+#
+#   --@TREE Name=src@
+#
+# which inlines every .lua file under that directory as
+# `local Name = { ["relative/path.lua"] = [==[ ... ]==], ... }`. A spec can then
+# assert something about EVERY file rather than a hand-listed handful, which is
+# what a check like "no call site passes the wrong number of arguments" needs -
+# the mistake is never in the file you thought to list.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -80,6 +90,20 @@ for spec in tests/*_spec.lua; do
           echo "local $name = [=====["
           cat "$path"
           echo "]=====]"
+        done
+        ;;
+      "--@TREE "*)
+        pairs="${line#--@TREE }"; pairs="${pairs%@}"
+        for pair in $pairs; do
+          name="${pair%%=*}"
+          root="${pair#*=}"
+          echo "local $name = {"
+          for f in $(find "$root" -name '*.lua' | sort); do
+            echo "[\"$f\"] = [=====["
+            cat "$f"
+            echo "]=====],"
+          done
+          echo "}"
         done
         ;;
       *)
