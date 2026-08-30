@@ -83,6 +83,14 @@ local function buildSegment(descriptor, footprint: number, palette, parent: Inst
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
 
+	--[[
+		Which palette role this part plays, stamped so MutationSkin can recolour
+		crests and plates differently from the hide without re-deriving the body
+		plan. Real art dropped in without the attribute gets the hide treatment,
+		which is the correct fallback rather than a failure.
+	]]
+	part:SetAttribute("Tint", descriptor.Tint)
+
 	if descriptor.Shape == "Ellipsoid" then
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Sphere

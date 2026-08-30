@@ -106,6 +106,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/AnalyticsConfig` | ModuleScript | docs/14's 46 events, the 3-field limit, sampling, and docs/12 §4's gates |
 | `Config/AnimationConfig` | ModuleScript | docs/15 §2's 29 clips, the procedural stand-ins, and 20 archetype characters |
 | `Config/BodyPlanConfig` | ModuleScript | 12 placeholder silhouettes, the archetype mapping, and the zone/rarity palette — all pure numbers |
+| `Modules/MutationSkin` | ModuleScript | Paints a mutation recipe onto a model — recolour, material, and a Highlight for the announced four |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -933,6 +934,56 @@ that does not reach the ground, a body wider than its tile, an archetype
 silently falling back to the generic theropod, two species in one zone that come
 out the same colour, an accent invisible against the hide it sits on.
 
+### Mutation visuals
+
+```
+MutationConfig.Visuals / Materials / DarkVisualSwap
+MutationConfig.SkinFor(primary, secondary?) -> recipe?
+MutationConfig.ValidateVisuals() -> ok, problems
+MutationConfig.HexToHsv / HsvToHex
+
+MutationSkin.Apply(model, primary, secondary?) -> boolean
+MutationSkin.Clear(model)
+```
+
+**A mutation used to be a word in the name tag and nothing else.** `ParkService`
+stamped `Mutation` as an attribute and `DisplayNameOf` prefixed "Void" — so a
+x150 Void Tyrannosaurus, at 1 in 2,000,000, rendered identically to a plain one.
+The loudest moment in the game landed with nothing on screen.
+
+**`Vfx` was never the answer, because nothing reads it.** Every mutation has
+named a particle effect since Step 3 — `Mut_Golden`, `Mut_Void` — pointing into
+`SAD_Assets/Effects`, which is empty. Registered but inert, the same shape as
+findings 29, 30 and 56. The names stay for the day the effects are authored, and
+the spec asserts nothing reads them yet, so wiring them up later has to be a
+deliberate act rather than two systems quietly running at once.
+
+**The stand-in is a recolour, a material, and an outline.** No asset ids, no
+particle textures, nothing invented. Golden is Metal, Crystal is Glass at 0.25
+transparency, Frozen is Ice, Electric keeps a matte hide with Neon crests.
+Rainbow walks the hue wheel across the parts in sorted order, taking each part's
+existing brightness so the belly stays lighter than the limbs — a rainbow with
+no texture and no animation loop to keep in sync.
+
+**Crystal, Frozen and Diamond are all pale blue-white by design** — docs/04
+gives them `BFE9F5`, `8FD9F5` and `E8F7FF`, which is 0.097 apart on the closest
+pair. Colour was never going to separate them, so the material does: Glass, Ice,
+and Glass-with-Neon-and-a-glow. The spec asserts no pair matches on *both*.
+
+**The glow is tied to `AnnounceKind`, not to a second threshold.** If the game
+stops the room for a hatch, the dinosaur should be findable in a park
+afterwards; if it does not, it should not be wearing an outline. That is four of
+the eight, and it also bounds the count — Roblox stops rendering `Highlight`s
+past a few dozen adornees, and Golden at 12% of hatches would blow through that
+on its own.
+
+**A stack shows both mutations.** `MaxStack` is 2 and `DisplayPrefix` already
+names both, so "Golden Rainbow" is a thing a player can own. Averaging two
+mutation colours renders every pair as mud, so the primary takes the hide and
+its material, and the secondary takes the crests, plates, frills and sails that
+the body plan already separates out. Two mutations, two colours, on parts that
+were already distinct.
+
 ### StarterPlayerScripts/SAD_Client/UI
 
 | Object | Type | Purpose |
@@ -1140,11 +1191,17 @@ current value, then on every change at or under that path. No polling anywhere.
 | 128 | The dark-rarity swap is keyed on measured value, not a list of ids | Secret is `1A1A24` — value 0.14. As an accent on a mid-toned hide it is a smudge, which would make the two rarest-but-one species the least distinctive in the game. Below `DarkRaritySwap` the hide and accent trade jobs. Measured rather than listed, so a future dark rarity gets the same treatment without anyone remembering | docs/01 §3 |
 | 129 | Added ConfigValidator **rule 12**: every species resolves to a body plan that stands on the ground inside its tile | It calls the same `BodyPlanConfig.Validate` the offline spec calls, so the boot check and the spec cannot disagree about what valid means. It also warns when a plan is used by no species — the opposite failure, where a species has quietly lost its silhouette to the fallback | docs/11 §5 |
 | 130 | The same-zone colour-separation bar is set at the **measured** floor, not a derived one | 0.044 is where the current roster actually sits (othnielia vs psittacosaurus). A hash cannot guarantee any separation, so the honest thing is a tripwire at today's value with instructions not to widen the jitter when it trips — widening moves every species to hide one collision. Rename the id or add an override instead | — |
+| 131 | Mutation visuals are **procedural**, and `Vfx` stays unread | The eight shipped mutations name a particle effect each and the effects folder is empty — so until it is filled, a x150 Void dinosaur looks exactly like a plain one. Same stance as `SoundController` (#55): no invented asset id, a stand-in built from data that already exists, and a spec assertion that nothing reads `Vfx` yet so wiring it up later retires the stand-in deliberately | docs/04 §1, docs/15 §3 |
+| 132 | The mutation glow is keyed on `AnnounceKind`, not a new rank threshold | One field, one meaning: the game already decides which mutations are worth stopping the room for, and those are exactly the ones worth an outline in a park. It also bounds the `Highlight` count, which Roblox caps at a few dozen adornees — Golden at 12% of hatches would exceed it alone | docs/04 §1, docs/08 §5 |
+| 133 | A stacked pair paints the hide from the primary and the accent from the secondary | `MaxStack` is 2 and `DisplayPrefix` already names both, so the visual has to carry both or the name is a promise the model breaks. Blending two mutation colours into one renders every pair as mud; the body plan already separates crests and plates from the hide, so the second mutation goes there | docs/04 §1.1 |
+| 134 | `AssetBuilder` stamps a `Tint` attribute on every part | So `MutationSkin` can tell a crest from a flank without re-deriving the body plan, and so real art dropped in without the attribute gets the hide treatment — the correct fallback rather than a failure | — |
+| 135 | Added ConfigValidator **rule 13**: every shipped mutation has a visual whose glow matches its announcement | A mutation with no visual renders as if it had none, which is only noticeable if you already know what you were looking for. It also refuses a material outside the seven-name allowlist: naming a terrain-only material on a Part is a silent no-op, not an error | docs/11 §5 |
+| 136 | Rule 13 was written as `x and f()` and would have reported nothing on failure | An `and` expression truncates a call to a single value, so `problems` was nil on every failure path and the loop over it would have errored into the generic "a validation rule itself errored". Caught while writing the spec, before it ran. Rewritten as a type check | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 99 source files and runs **6,745
-assertions** outside Roblox. Last run: **6,745 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 100 source files and runs **6,862
+assertions** outside Roblox. Last run: **6,862 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed

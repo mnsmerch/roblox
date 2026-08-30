@@ -24,7 +24,7 @@ dinosaur chases you home. Then other players try to steal your dinosaurs.
 offline test to a full Studio setup.
 
 ```bash
-./tests/run.sh    # 6,745 assertions, no Studio needed
+./tests/run.sh    # 6,862 assertions, no Studio needed
 ```
 
 ## Repository layout

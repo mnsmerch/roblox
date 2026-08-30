@@ -760,6 +760,28 @@ one stealing from the other, is the way to check it.
 
 `AnimationController` is a **ModuleScript** under `Controllers`, already in the
 roster as a Step 9 reservation, so the Bootstrap does not change. Re-paste
+### Mutation visuals
+
+`SAD_Shared/Modules/MutationSkin` (new, ModuleScript) goes beside the other
+shared modules. `ParkService` requires it; nothing else needs placing.
+
+To see one without waiting for a 1-in-2,000,000 hatch: in the Command Bar with
+the game running, give yourself a mutated dinosaur through the profile, or place
+a dinosaur and run
+
+```lua
+require(game.ReplicatedStorage.SAD_Shared.Modules.MutationSkin)
+    .Apply(workspace.SAD_Runtime.ParkDinos:GetChildren()[1], "void")
+```
+
+swapping `"void"` for any of golden, crystal, frozen, electric, diamond,
+rainbow or galaxy. The four announced ones (diamond, rainbow, galaxy, void) also
+get a `Highlight` outline. Pass a second id to see a stack:
+`.Apply(model, "golden", "void")` gives a gold hide with void crests.
+
+Placed dinosaurs live in `Workspace/SAD_Runtime/ParkDinos`, named
+`ParkDino_<uid>` — not under the plot they stand on.
+
 ### Placeholder dinosaur models
 
 `SAD_Shared/Config/BodyPlanConfig` (new, ModuleScript) sits beside the other

@@ -38,7 +38,8 @@
 		ParkService.DinoRendered    Signal(owner, uid, model)
 		ParkService.ParkExited      Signal(player, ownerUserId, plot)
 
-	Depends on: ParkConfig, PlotBuilder, PlayerDataService, Log, Signal.
+	Depends on: ParkConfig, PlotBuilder, PlayerDataService, MutationSkin, Log,
+	            Signal.
 	Depended on by: EggService, StealService, WildAIService, DinosaurService.
 ]]
 
@@ -50,6 +51,7 @@ local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local DinoConfig = require(Shared.Config.DinoConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local ParkConfig = require(Shared.Config.ParkConfig)
+local MutationSkin = require(Shared.Modules.MutationSkin)
 local RarityConfig = require(Shared.Config.RarityConfig)
 local ZoneConfig = require(Shared.Config.ZoneConfig)
 local Economy = require(Shared.Modules.Economy)
@@ -285,6 +287,26 @@ function ParkService.RefreshDinos(player: Player)
 		if entry.Mutation then
 			model:SetAttribute("Mutation", entry.Mutation)
 		end
+		--[[
+			Both, because MaxStack is 2 and the skin paints the hide from the
+			primary and the crests from the secondary. Mutation2 was rolled and
+			named in the tag but never published on the model.
+		]]
+		if entry.Mutation2 then
+			model:SetAttribute("Mutation2", entry.Mutation2)
+		end
+
+		--[[
+			A mutation used to be a word in the name tag and nothing else - a
+			x150 Void dinosaur rendered identically to a plain one. The recipe
+			is MutationConfig.SkinFor; this is the call site.
+
+			Server-side rather than in a controller: the model is server-built
+			and the skin is part of what the dinosaur IS, not a local effect. It
+			replicates once with the model instead of being recomputed by every
+			client that walks past.
+		]]
+		MutationSkin.Apply(model, entry.Mutation, entry.Mutation2)
 
 		-- Rare dinosaurs are meant to be visible from across the map
 		-- (docs/01 §1). A light is the cheapest thing that carries at range.

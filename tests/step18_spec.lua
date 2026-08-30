@@ -290,7 +290,7 @@ end
 	Named individually rather than counted, because a count passes just as
 	happily when the wrong rule is missing.
 ]]
-for _, id in ipairs({ "R1", "R2", "R3", "R4", "R5", "R6", "R8", "R9", "R11", "S" }) do
+for _, id in ipairs({ "R1", "R2", "R3", "R4", "R5", "R6", "R8", "R9", "R11", "R12", "R13", "S" }) do
 	ok("rule reported a pass: " .. id, reported[id] == true)
 end
 

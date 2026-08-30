@@ -51,6 +51,7 @@ local OPTIONAL_CONFIGS = {
 	Weather = "WeatherConfig (Step 17)",
 	Assets = "SAD_Assets (Step 7)",
 	BodyPlan = "BodyPlanConfig + ChaseConfig",
+	MutationVisuals = "MutationConfig.Visuals (a fixture without functions)",
 }
 
 local function newReport()
@@ -568,6 +569,53 @@ local function ruleBodyPlans(report, c)
 end
 
 --[[
+	R13: every shipped mutation has a visual, and the ones that glow are exactly
+	the ones the game announces.
+
+	`MutationConfig.ValidateVisuals` does the measuring, so the boot check and
+	tests/mutation_visual_spec.lua cannot disagree. The failure this catches is
+	silent by nature: a mutation with no visual is a dinosaur that renders as if
+	it had no mutation, which is only noticeable if you already know what you
+	were supposed to be looking at.
+]]
+local function ruleMutationVisuals(report, c)
+	--[[
+		A hand-assembled Mutation fixture (step3_spec has several) carries
+		weights and multipliers but no functions. Skipping is right: those
+		fixtures exist to exercise the weight rules, not this one.
+
+		Written as a type check rather than `c.Mutation.ValidateVisuals and
+		c.Mutation.ValidateVisuals()`, which is how I first wrote it - an
+		`and` expression truncates a call to a single value, so `problems`
+		would have been nil on every failure and the loop below would have
+		errored instead of reporting.
+	]]
+	if type(c.Mutation.ValidateVisuals) ~= "function" then
+		table.insert(report.skipped, OPTIONAL_CONFIGS.MutationVisuals)
+		return
+	end
+
+	local ok, problems = c.Mutation.ValidateVisuals()
+	if not ok then
+		for _, problem in problems do
+			fail(report, "R13", "%s", problem)
+		end
+		return
+	end
+
+	local shipped, glowing = 0, 0
+	for id, mutation in c.Mutation.List do
+		if id ~= "none" and mutation.InV1 then
+			shipped += 1
+			if mutation.AnnounceKind ~= nil then
+				glowing += 1
+			end
+		end
+	end
+	pass(report, "R13", "%d shipped mutation(s) have a visual, %d of them glow", shipped, glowing)
+end
+
+--[[
 	The rule list.
 
 	`RULES` is asserted contiguous and all-functions immediately below. That is
@@ -592,16 +640,17 @@ local RULES = {
 	ruleProductIds,
 	ruleWeatherTables,
 	ruleBodyPlans,
+	ruleMutationVisuals,
 	ruleStructural,
 }
 
 --- Asserted at load, so a mis-registered rule cannot reach a running game.
-for index = 1, 13 do
+for index = 1, 14 do
 	assert(type(RULES[index]) == "function",
 		string.format("[SAD] ConfigValidator: rule #%d is %s, not a function - it is "
 			.. "registered in RULES but never defined", index, typeof(RULES[index])))
 end
-assert(RULES[14] == nil, "[SAD] ConfigValidator: RULES has more entries than the count asserted above")
+assert(RULES[15] == nil, "[SAD] ConfigValidator: RULES has more entries than the count asserted above")
 
 --[[
 	`configs` needs at minimum: Rarity, Mutation, Dino, Zone, Upgrade.
