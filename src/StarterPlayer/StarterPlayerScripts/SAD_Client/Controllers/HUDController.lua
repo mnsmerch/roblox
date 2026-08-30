@@ -48,6 +48,7 @@ local topBar, leftRail, rightRail, bottomBar
 local chips = {}
 local buttons = {}
 local actionPrompt
+local carryPanel
 local compass, eventBanner
 local railToggle
 
@@ -227,6 +228,58 @@ local function buildActionPrompt()
 	})
 end
 
+--[[
+	The carry readout: what you are holding and how far you are from safety.
+
+	Sits above the action prompt because during a run it is the only thing that
+	matters (docs/08 §2.3). Rarity is coloured, so a Mythic carry is legible at
+	a glance without reading the word.
+]]
+local function buildCarryPanel()
+	local rarityLabel = Create("TextLabel", {
+		Name = "Rarity",
+		Size = UDim2.new(1, -Theme.Space.L, 0, 26),
+		Position = UDim2.fromOffset(Theme.Space.M, 6),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Display,
+		TextSize = Theme.TextSize.Label,
+		TextColor3 = Theme.Color.Text,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "",
+		ZIndex = Theme.Layer.Prompt + 1,
+	})
+
+	local distanceLabel = Create("TextLabel", {
+		Name = "Distance",
+		Size = UDim2.new(1, -Theme.Space.L, 0, 20),
+		Position = UDim2.fromOffset(Theme.Space.M, 30),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Bold,
+		TextSize = Theme.TextSize.Small,
+		TextColor3 = Theme.Color.TextMuted,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "",
+		ZIndex = Theme.Layer.Prompt + 1,
+	})
+
+	carryPanel = Widgets.Panel({
+		Name = "CarryPanel",
+		Size = UDim2.new(0, 300, 0, 58),
+		Position = UDim2.new(0.5, 0, 1, -(Theme.Size.BottomBarHeight + Theme.Size.ActionPromptHeight + Theme.Space.XL)),
+		AnchorPoint = Vector2.new(0.5, 1),
+		Color = Theme.Color.SurfaceRaised,
+		Transparency = 0.05,
+		StrokeColor = Theme.Color.Accent,
+		Visible = false,
+		ZIndex = Theme.Layer.Prompt,
+		Children = { rarityLabel, distanceLabel },
+		Parent = UIController.Layer("prompt"),
+	})
+
+	carryPanel.Rarity = rarityLabel
+	carryPanel.Distance = distanceLabel
+end
+
 local function buildRailToggle()
 	-- Below RailCollapseWidth the left rail folds behind one button
 	-- (docs/08 §4). Four extra icons is exactly what a 5.5" screen cannot
@@ -345,6 +398,31 @@ function HUDController.SetChaseMode(active: boolean)
 	end
 end
 
+--[[
+	Shows or hides the carry readout.
+
+	`info` nil hides it. Otherwise: { Rarity, RarityColor, Count, Distance }.
+	EggCarryController drives this; nothing here knows what an egg is.
+]]
+function HUDController.SetCarry(info)
+	if not info then
+		carryPanel.Visible = false
+		return
+	end
+
+	carryPanel.Visible = true
+
+	local suffix = if info.Count and info.Count > 1 then string.format("  x%d", info.Count) else ""
+	carryPanel.Rarity.Text = string.format("🥚 %s EGG%s", string.upper(info.Rarity or "?"), suffix)
+	carryPanel.Rarity.TextColor3 = info.RarityColor or Theme.Color.Text
+
+	if info.Distance then
+		carryPanel.Distance.Text = string.format("↑ %d studs to your park", math.floor(info.Distance))
+	else
+		carryPanel.Distance.Text = "Get to your park!"
+	end
+end
+
 function HUDController.SetCompass(text: string?)
 	compass.Text = text or ""
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
@@ -378,6 +456,7 @@ function HUDController.Init(app)
 	buildBottomBar()
 	buildRailToggle()
 	buildActionPrompt()
+	buildCarryPanel()
 
 	Log.info("HUDController", "HUD built")
 end

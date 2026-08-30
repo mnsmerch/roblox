@@ -287,6 +287,25 @@ with placeholder models.
 
 ---
 
+## Step 8 — pickup and carrying
+
+| Studio object | Source file |
+|---|---|
+| `Services/SecurityService` | `src/.../SecurityService/init.lua` *(new)* |
+| `Services/EggService` | `src/.../EggService/init.lua` *(new)* |
+| `SAD_Client/Controllers/EggCarryController` | `src/.../Controllers/EggCarryController.lua` *(new)* |
+| `SAD_Shared/Config/GameConfig` | *(re-paste — movement and carry constants)* |
+| `Services/NestService` | *(re-paste — prompts now signal instead of claiming)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — carry panel)* |
+
+`SecurityService` and `EggService` are ModuleScripts with no children.
+
+> **Step 7's egg test changes.** Nest prompts no longer claim an egg by
+> themselves — holding one now mints a carry token and welds the egg to you.
+> That is Step 7's behaviour being superseded, not broken.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -826,9 +845,112 @@ end
 
 ---
 
+## Step 8 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][SecurityService] Movement plausibility at 4 Hz, tolerance 1.6x, correction on
+[SAD/S][EggService] Ready. Loose eggs last 10s
+[SAD/C][EggCarryController] Watching for carried eggs
+```
+
+**2. Steal an egg.** Walk into Jurassic Plains, hold `E` on one for 0.6 s.
+
+- The egg appears **above your head**
+- The carry panel shows its rarity in that rarity's colour, and the distance to
+  your park
+- Output logs the roll and your luck:
+  `took a common egg from Nest_plains_04 (luck 0.00)`
+
+**3. Feel the weight.** Common eggs cost nothing. To feel a heavy one, force a
+rare roll from the server command bar:
+
+```lua
+local Egg = require(game.ServerScriptService.SAD_Server.Services.EggService)
+local Nest = require(game.ServerScriptService.SAD_Server.Services.NestService)
+local p = game.Players:GetPlayers()[1]
+
+-- Stand next to a nest, then:
+print(p.Character.Humanoid.WalkSpeed)          --> 20 before
+Egg.TryPickup(p, Nest.GetNestsInZone("plains")[1].Id, 1)
+print(p.Character.Humanoid.WalkSpeed)          --> lower, by rarity
+print("penalty:", Egg.GetCarryPenalty(p))
+```
+
+A Titan egg leaves you at **11.0** studs/s against a base of 20 — the published
+table in docs/03 §1.2, which `tests/step8_spec.lua` asserts line by line.
+
+**4. Drop it, and watch anyone take it.** Press `Q`. The egg lands on the
+ground with a *Grab Egg* prompt that **any** player can use, for 10 seconds,
+after which it returns to its nest. With two clients, drop a rare egg in front
+of the other player and let them take it.
+
+**5. Capacity.** Try to take a second egg with a level-0 pouch:
+
+```lua
+print(Egg.TryPickup(p, Nest.GetNestsInZone("plains")[2].Id, 1))  --> false  hands full
+```
+
+Then raise it and try again:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+PDS.UpdateKeys(p, { "Upgrades" }, function(d) d.Upgrades.eggPouch = 4 end, "test")
+print(Egg.GetCapacity(p))   --> 5
+```
+
+Two eggs stack visually above your head, and the second costs only 40% of its
+own weight.
+
+**6. Luck actually moves the odds.**
+
+```lua
+PDS.UpdateKeys(p, { "Upgrades" }, function(d) d.Upgrades.eggSense = 15 end, "test")
+print("luck:", Egg.ComputeLuck(p, "plains"))   --> 0.75
+
+local counts = {}
+for _ = 1, 20000 do
+    local r = Egg.RollRarityIn("plains", 0.75)
+    counts[r] = (counts[r] or 0) + 1
+end
+print("common:", counts.common, "epic:", counts.epic)
+```
+
+Compare against luck 0 — commons fall, epics roughly double.
+
+**7. Leaving mid-carry costs you the egg.** Take an egg, then stop the client.
+The server logs `Returned ...'s carried egg(s) to their nests` and the egg is
+back in its nest. **It is not in your inventory on rejoin** — a carried egg is
+never in the profile, so disconnecting cannot bank it.
+
+**8. The movement guard.** In the **client** console:
+
+```lua
+game.Players.LocalPlayer.Character.Humanoid.WalkSpeed = 200
+```
+
+Run around. Within a second or two the server logs
+`flagged: SuspiciousMovement`, drops anything you were carrying, and after five
+flags snaps you back. It never kicks you — false positives happen on poor
+connections, and disconnecting a child over network jitter is not an acceptable
+trade.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Holding a prompt does nothing | `NestService` not re-pasted — prompts now fire a signal that `EggService` listens for |
+| Egg appears but speed does not change | `Humanoid` missing, or another script setting `WalkSpeed` after us |
+| Egg stays after respawn | `EggService` not re-pasted; a carried egg is dropped on respawn by design |
+| Constant `SuspiciousMovement` flags | Something moves characters without calling `SecurityService.Exempt` |
+| `hands full` on the first egg | A stale token — check `Egg.GetCarryCount(p)` |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **1,824 assertions** without Studio:
+Syntax-checks every source file and runs **1,920 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -845,6 +967,7 @@ Fetches the Luau CLI on first run.
 | `tests/step5_spec.lua` | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, and design-token ordering |
 | `tests/step6_spec.lua` | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap, and the plot depth budget |
 | `tests/step7_spec.lua` | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection and risk ratings |
+| `tests/step8_spec.lua` | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, rarity roll distributions, and the luck tail guard |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

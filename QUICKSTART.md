@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 39 source files and runs **1,824 assertions**: the economy
+Syntax-checks all 42 source files and runs **1,920 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -139,9 +139,13 @@ top-left and five buttons along the bottom.
 | Hub, 4 zones, 48 nests | Walk out of your park; read a nest sign's odds |
 | Egg claiming + respawn | Hold E on an egg; wait 45s and it comes back |
 | Placeholder art | 35 dinosaur models and 10 eggs generate themselves |
+| Stealing an egg | Hold E at a nest; it appears above your head |
+| Carry weight | A Titan egg drops you from 20 to 11 studs/s |
+| Loose eggs | Press Q — anyone can grab it for 10 seconds |
+| Anti-cheat | Set your own WalkSpeed and get flagged, dropped, snapped back |
 
-**Not built yet:** carrying eggs, chases, hatching, income, upgrades, stealing
-from players. Steps 8–24. The bottom-bar buttons log `No screen registered` —
+**Not built yet:** chases, hatching, income, upgrades, stealing from players.
+Steps 9–24. The bottom-bar buttons log `No screen registered` —
 that warning is correct, the screens arrive in Step 13.
 
 ---

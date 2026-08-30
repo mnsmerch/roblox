@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 7 of 24 complete.** Awaiting the Studio Play test before Step 8.
+## Status: **Step 8 of 24 complete.** Awaiting the Studio Play test before Step 9.
 
 ## Completed
 
@@ -18,6 +18,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 5** — HUD skeleton | UI built in code, 96 more assertions |
 | 2026-08-29 | **Step 6** — park plots | 24 plots generated procedurally, 142 more assertions |
 | 2026-08-29 | **Step 7** — world, zones & nests | Hub + 4 zones + 48 nests generated, 356 more assertions |
+| 2026-08-30 | **Step 8** — egg pickup & carrying | Rarity roll, carry tokens, loose eggs, 96 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -30,7 +31,7 @@ accident. Updated at the end of every build step.
 | 5 | HUD skeleton | ✅ **done** |
 | 6 | Park plots | ✅ **done** |
 | 7 | Nests & the world | ✅ **done** |
-| 8 | Egg pickup & carrying | ⬜ |
+| 8 | Egg pickup & carrying | ✅ **done** |
 | 9 | Guardian AI & the chase | ⬜ |
 | 10 | Safe zone & deposit | ⬜ |
 | 11 | Incubation & hatching | ⬜ |
@@ -100,6 +101,31 @@ rebuilds this on every server start.
 | `Services/NestService` | ModuleScript | World blockout, nest state, egg claiming, respawn |
 | `Services/NestService/WorldBuilder` | ModuleScript | Hub plaza + 4 zone blockouts + tagged anchors |
 | `Services/NestService/NestBuilder` | ModuleScript | Nest bowl, generic eggs, risk/odds sign |
+| `Services/SecurityService` | ModuleScript | Rate-limit records, movement plausibility, distance checks |
+| `Services/EggService` | ModuleScript | Pickup, rarity roll, carry tokens, carry weight, loose eggs |
+
+```
+SecurityService.CheckDistance(player, position, range?) -> ok, reason?
+SecurityService.SetMaxSpeed(player, speed) / GetMaxSpeed(player)
+SecurityService.Exempt(player, seconds) / IsExempt(player)
+SecurityService.Flag(player, kind, detail) / GetFlagCount(player)
+SecurityService.Flagged / CarryVoided   Signals
+
+EggService.TryPickup(player, nestId, slotIndex) -> ok, reason?
+EggService.Drop(player, uid, reason?) / DropAll(player, reason?)
+EggService.GrabLoose(player, uid) -> ok, reason?
+EggService.TakeToken(player, uid) -> token?      -- Step 10 deposits with this
+EggService.GetCarried / GetCarryCount / GetCapacity / GetCarryPenalty
+EggService.CarryPenaltyOf(penalties, strongBackMult) -> number   -- pure
+EggService.LuckFrom(data, zone) -> number                        -- pure
+EggService.RollRarityIn(zoneId, luck, rng?) -> rarityId          -- pure given rng
+EggService.EggPickedUp / EggDropped / RareGrab   Signals
+```
+
+**A carried egg is never in the profile.** It exists as a server-side token and
+nothing else, so leaving mid-run returns it to its nest rather than banking it.
+The model welded to the character is cosmetic — deleting or editing it changes
+nothing the server believes.
 
 ```
 NestService.GetNest(nestId) -> nest?
@@ -177,8 +203,9 @@ client never hears about; there is no polling fallback by design.
 |---|---|---|
 | `StateController` | ModuleScript | The client's mirror of its own profile slice |
 | `UIController` | ModuleScript | Owns `SAD_UI`, the 5 layers, scaling, one-screen-at-a-time |
-| `HUDController` | ModuleScript | Top bar, rails, bottom bar, action prompt; binds via Observe |
+| `HUDController` | ModuleScript | Top bar, rails, bottom bar, action prompt, carry panel |
 | `InputController` | ModuleScript | Keyboard/gamepad/touch → named actions |
+| `EggCarryController` | ModuleScript | Reads carry state off the world; drives the carry panel |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -243,11 +270,14 @@ current value, then on every change at or under that path. No polling anywhere.
 | 19 | Added `AssetBuilder` as shared module #10 | Placeholder models make ConfigValidator rule 7 a real check instead of a permanently skipped one, and unblock Steps 11–12 before any art exists. Only fills what is missing, so the art handover can be one species at a time | docs/09 §1 |
 | 20 | Zone ring uses **10 reserved slots** at a derived radius of 950 | Zones 5–10 then land in their final positions without moving a landmark players have learned. Doc 02's hand-drawn compass arrangement is replaced by an even ring ordered by difficulty, which the doc itself asks for ("clockwise by difficulty") | docs/02 §1 |
 | 21 | Nest positions come from a golden-angle spiral, not hand-placed anchors | Deterministic (players learn the map), evenly spread without random clustering, and provably non-overlapping even if `NestCount` is raised | docs/02 §2.3 |
+| 22 | Carried eggs are **client**-owned physics, not server-owned as docs/09 §6 said | A part welded to a character joins that character's assembly; there is no way to keep server ownership. Safe because the model is cosmetic — the CarryToken is the only authority | docs/09 §6 |
+| 23 | Carry state reaches the client through **model attributes**, not a new remote | The welded model is already replicated to everyone, so observers get the rarity aura for free and there is no extra packet to keep in sync with the truth. Avoids adding to the frozen remote list | docs/09 §3 |
+| 24 | Nest prompts fire `NestService.PickupRequested` instead of claiming directly | Step 7 wired them straight to `ClaimEgg` as a standalone test. Claiming without minting a token destroys an egg and gives nothing, so the whole pickup belongs to `EggService` | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 39 source files and runs **1,824
-assertions** outside Roblox. Last run: **1,824 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 42 source files and runs **1,920
+assertions** outside Roblox. Last run: **1,920 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -258,6 +288,7 @@ assertions** outside Roblox. Last run: **1,824 passed, 0 failed.**
 | `step5_spec` (96) | The 64px touch-target guarantee across 12 real device viewports, scale and breakpoint maths, design-token ordering |
 | `step6_spec` (142) | Tile round trip for all 64 tiles, footprint bounds for every size at every anchor, plot ring non-overlap at 24 and 48 plots, and the plot depth budget |
 | `step7_spec` (356) | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection, risk ratings |
+| `step8_spec` (96) | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, roll distributions, the luck tail guard |
 
 Bugs the specs caught before they shipped:
 
@@ -296,6 +327,18 @@ Bugs the specs caught before they shipped:
    eggs drift somewhere else. The anchor is now stored as an attribute, and one
    `createEgg` path serves both the initial build and respawn — two
    construction paths is two sets of attributes to forget to set.
+9. Step 7 left nest prompts wired straight to `NestService.ClaimEgg`. Once
+   Step 8 introduced carry tokens that became a bug that destroys an egg and
+   hands the player nothing — the prompt now fires a signal `EggService` owns.
+
+**One thing the specs surfaced that is worth knowing, not fixing:** with Mythic
+and Ancient zeroed for V1, the highest luck powers in play are Legendary and
+Secret, both 0.55 — so a maxed-luck V1 player improves their Secret odds as much
+as their Legendary odds. At 1 in 5,263,158 in Zone 1 that is a rounding error in
+absolute terms, and it corrects itself when those tiers ship in V1.1/V1.3. The
+tail guard proper (Secret and Titan gain less than Mythic and Ancient) is
+asserted against the design-target weights, since it cannot be measured on a
+vector where those tiers are zero.
 
 Not covered offline (need Roblox): `Net`, `Log`, both Bootstraps, and every
 ProfileStore-dependent path. See the Studio test lists in SETUP.md.

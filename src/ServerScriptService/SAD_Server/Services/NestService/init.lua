@@ -53,6 +53,16 @@ NestService.EggClaimed = Signal.new()
 NestService.NestRefilled = Signal.new()
 
 --[[
+	Fired when a player finishes holding a nest prompt.
+
+	NestService does NOT claim the egg itself. Claiming without minting a carry
+	token would destroy an egg and give the player nothing, so ownership of the
+	whole pickup - roll, token, weld, speed - belongs to EggService, and this
+	signal is the handoff. Nothing listening means nothing happens.
+]]
+NestService.PickupRequested = Signal.new()
+
+--[[
 	nests[nestId] = {
 		Id, ZoneId, NestIndex, Model, AnchorCFrame,
 		GuardianSpeciesId, Risk, RespawnSecs,
@@ -111,8 +121,8 @@ end
 	an egg. That is the duplication bug in this system, and yield-freedom is the
 	whole defence.
 
-	Step 8 wraps this with the rarity roll and the carry token. Step 7 wires the
-	prompt straight to it so nests are testable now.
+	This is the irreversible step, so it runs LAST in EggService.TryPickup -
+	everything that could refuse a pickup refuses before an egg is consumed.
 ]]
 function NestService.ClaimEgg(player: Player, nestId: string, slotIndex: number): (boolean, string?)
 	local nest = nests[nestId]
@@ -177,7 +187,7 @@ local function refillSlot(nest, slotIndex: number)
 	slot.RefillAt = nil
 
 	prompt.Triggered:Connect(function(player)
-		NestService.ClaimEgg(player, nest.Id, slotIndex)
+		NestService.PickupRequested:Fire(player, nest.Id, slotIndex)
 	end)
 
 	NestService.NestRefilled:Fire(nest, slotIndex)
@@ -233,7 +243,7 @@ local function buildNestAt(anchor: BasePart)
 			RefillAt = nil,
 		}
 		slot.Prompt.Triggered:Connect(function(player)
-			NestService.ClaimEgg(player, nest.Id, slotIndex)
+			NestService.PickupRequested:Fire(player, nest.Id, slotIndex)
 		end)
 	end
 

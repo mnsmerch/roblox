@@ -97,6 +97,28 @@ GameConfig.SettingsSchema = {
 	AutoCollect = { Type = "boolean" },
 }
 
+-- ── Movement ────────────────────────────────────────────────────────────────
+
+GameConfig.BaseWalkSpeed = 20
+
+--- Carrying can never make a player slower than this fraction of base speed.
+--- A Titan egg at 45% plus a second egg must still leave them able to run.
+GameConfig.MaxCarryPenalty = 0.85
+
+--- Each egg past the first contributes only this share of its own penalty, so
+--- multi-carry is a real risk/reward call rather than a free upgrade.
+GameConfig.MultiCarryEffectiveness = 0.40
+
+--[[
+	Movement correction. Sustained implausible movement snaps the character
+	back to its last valid position - never a kick. False positives happen on
+	laggy mobile connections, and disconnecting children over network jitter is
+	not an acceptable trade for catching a speed exploit.
+]]
+GameConfig.MovementCorrectionEnabled = true
+GameConfig.MovementFlagsBeforeCorrection = 5
+GameConfig.MovementFlagWindowSecs = 30
+
 -- ── Carry / theft grace ─────────────────────────────────────────────────────
 GameConfig.CarryTokenGraceSecs = 30 -- disconnect-while-carrying resolution delay
 GameConfig.LooseEggLifetimeSecs = 10

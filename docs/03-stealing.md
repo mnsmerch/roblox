@@ -232,7 +232,9 @@ detail in [09-tech-architecture.md](09-tech-architecture.md) §7.
 | Teleport to nest, grab, teleport home | Server tracks per-player position samples at 4 Hz; any displacement > `maxSpeed × dt × 1.6` invalidates carry state and logs `SuspiciousMovement` |
 | Spam pickup remote | Central rate limiter: `RequestPickupEgg` = 2/sec, burst 3 |
 | Two clients claim the same egg | Egg has a server-side `ClaimedBy` field set inside a single-threaded claim function; second claim is rejected |
-| Dupe by leaving mid-carry | Carry state lives **only** on the server as a `CarryToken`; on disconnect the token is resolved (wild egg → nest, stolen dino → owner) before the profile releases |
+| Dupe by leaving mid-carry | Carry state lives **only** on the server as a `CarryToken` and is never written to the profile; on disconnect the token is resolved (wild egg → nest, stolen dino → owner) before the profile releases. Because a carried egg was never in the profile, disconnecting mid-run cannot bank it |
 | Dupe by leaving mid-deposit | Deposit is a single atomic server function: remove token → append to profile → save flag. No client step in between |
 | Fake "I reached my gate" | Gate crossing is detected **server-side** by a `Region3`/`GetPartBoundsInBox` check on the server tick, never by a client remote |
 | Client-side rarity roll | Rarity is rolled on the server at pickup with `Random.new()` seeded per-server; the client is only *told* the result |
+| Editing the carried egg model | The model is cosmetic. It carries `EggUid`/`Rarity` attributes for display only; the server reads its own token and never the model |
+| Raising your own `WalkSpeed` | The server sets `WalkSpeed` and tells `SecurityService` what it set. Movement plausibility measures against the **server's** intended speed, so a client that edits its own is measured against what it should have been |

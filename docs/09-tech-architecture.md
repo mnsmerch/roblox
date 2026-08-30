@@ -60,13 +60,13 @@ ServerScriptService
         ├── DataService              persistence, session locking
         ├── PlayerDataService        in-memory profile access + replication
         ├── SecurityService          rate limits, distance checks, movement sanity
+        ├── EggService               pickup, rarity roll, carry tokens, loose eggs
         ├── EconomyService           Fossils/DNA mutations, income ticking, offline
         ├── ParkService              plot assign/release, placement grid, defences
         │   └── PlotBuilder          procedural plot geometry
         ├── NestService              world blockout, nest spawn/respawn/claim
         │   ├── WorldBuilder         procedural hub + zone geometry
         │   └── NestBuilder          nest bowl, eggs, sign
-        ├── EggService               pickup, carry tokens, deposit
         ├── WildAIService            guardian spawn, chase ticking, de-aggro
         ├── IncubationService        timers, hatch resolution
         ├── DinosaurService          hatch rolls, ownership, place/store/sell/fuse
@@ -366,7 +366,7 @@ guardians.**
 | Remotes | 5 Hz coalesced state deltas; no per-frame remotes anywhere. Income floaters are generated client-side from a replicated rate, not sent per tick |
 | Income ticking | The server does **not** tick per dinosaur. It stores `bankedAt` + `ratePerSecond` and computes lazily on read. O(1) per player, not O(dinos) |
 | Nest queries | `CollectionService:GetTagged("SAD_Nest")` once at boot into a spatial bucket grid; proximity checks are bucket lookups, not distance loops over all nests |
-| Physics | Guardians and carried eggs are network-owned by the **server** (`BasePart:SetNetworkOwner(nil)`) — required for anti-cheat and it keeps physics off client CPUs |
+| Physics | Guardians are network-owned by the **server** (`BasePart:SetNetworkOwner(nil)`) — required for anti-cheat and it keeps physics off client CPUs. **Carried eggs are not**: a part welded to a character joins that character's assembly and is simulated on its owner's client, unavoidably. That is safe because the carried model is purely cosmetic — the CarryToken on the server is the only authority, and deleting, duplicating or editing the model changes nothing the server believes |
 | Parallel Luau | Guardian steering runs inside `Actor` instances with `task.desynchronize()` for the vector maths, re-synchronising only to apply `MoveTo` |
 | Memory | Object pooling for eggs, income floaters, VFX and guardian models via a shared `Pool` in `Trove` |
 
