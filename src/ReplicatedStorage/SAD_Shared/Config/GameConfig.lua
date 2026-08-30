@@ -119,6 +119,23 @@ GameConfig.MovementCorrectionEnabled = true
 GameConfig.MovementFlagsBeforeCorrection = 5
 GameConfig.MovementFlagWindowSecs = 30
 
+-- ── Storage ─────────────────────────────────────────────────────────────────
+
+--[[
+	Cap on undeposited eggs held in the profile.
+
+	docs/10 bounds Dinos at 235 entries but never bounded Eggs, which would let
+	a hoarder grow their profile without limit until a DataStore write starts
+	failing - the worst possible failure mode, arriving late and looking like
+	nothing. 50 is far more than the eight incubators can consume, so it never
+	binds in normal play; it exists so the profile has a ceiling at all.
+
+	Full storage does NOT destroy an egg. The deposit is refused, the player
+	keeps carrying it, and they are told why (docs/06 §1: a visible, fixable
+	blockage instead of silent loss).
+]]
+GameConfig.EggStorageCap = 50
+
 -- ── Carry / theft grace ─────────────────────────────────────────────────────
 GameConfig.CarryTokenGraceSecs = 30 -- disconnect-while-carrying resolution delay
 GameConfig.LooseEggLifetimeSecs = 10

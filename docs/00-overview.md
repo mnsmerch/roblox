@@ -52,11 +52,14 @@ is scary; a 7-year-old should laugh when the T-Rex catches them.
         │            STEAL the egg  ──► [RARITY REVEAL #1]          │
         │                    │                                     │
         │                    ▼                                     │
-        │            ██ THE CHASE ██  (guardian AI, 15–25s)         │
+        │            ██ THE CHASE ██  (guardian AI, 10–25s)         │
         │                    │           other players see your     │
         │                    │           egg aura and may hunt you  │
         │                    ▼                                     │
-        │            REACH your Park Gate (safe zone)               │
+        │            ESCAPE — leave the zone, outrun the leash,      │
+        │            or reach your Park Gate                        │
+        │                    ▼                                     │
+        │            RETURN home and BANK the egg                   │
         │                    │                                     │
         │                    ▼                                     │
         │            INCUBATE ──► timer length telegraphs rarity    │
@@ -79,6 +82,10 @@ is scary; a 7-year-old should laugh when the T-Rex catches them.
 **Loop timings (the rhythm the game should feel like):**
 
 - Micro-loop (**~45 s**): travel → steal → chase → deposit.
+  *Measured: 86 s on foot, 23 s once zone teleports and the PARK button exist
+  (Step 14). The map is deliberately too large to walk repeatedly — teleports
+  are what make the loop tempo work, and they are earned by discovering a zone
+  once. See `tests/step10_spec.lua`.*
 - Small loop (**~4 min**): a full egg from nest to placed dinosaur.
 - Medium loop (**~20 min**): enough Fossils for a meaningful upgrade or zone.
 - Macro loop (**~3–6 h**): a rebirth.

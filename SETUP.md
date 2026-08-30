@@ -321,6 +321,20 @@ with placeholder models.
 
 ---
 
+## Step 10 — safe zone and deposit
+
+No new files. Re-paste four:
+
+| Studio object | Why |
+|---|---|
+| `SAD_Shared/Config/GameConfig` | `EggStorageCap` |
+| `Services/EggService` | `DepositAll`, the gate hook, loss stats |
+| `Services/WildAIService` | escape/catch stats |
+| `SAD_Client/Controllers/HUDController` | the `Flash` banner |
+| `SAD_Client/Controllers/EggCarryController` | `Notify` handling |
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1039,9 +1053,70 @@ someone else's park.
 
 ---
 
+## Step 10 test
+
+**1. Complete the loop.** Steal an egg in Jurassic Plains, escape, and walk back
+through your own park gate. A green **SAFE!** banner appears and the egg is in
+your inventory:
+
+```
+[SAD/S][EggService] YourName banked 1 egg(s)
+```
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local d = PDS.Get(game.Players:GetPlayers()[1])
+for uid, egg in d.Eggs do print(uid, egg.Rarity, egg.Origin) end
+print("stolen:", d.Stats.EggsStolen, "lost:", d.Stats.EggsLost)
+```
+
+**2. Someone else's gate does not count.** Walk through another player's gate
+while carrying. The guardian stops at their wall — but nothing deposits, and the
+egg is still above your head. You are now standing in someone else's park with
+something worth taking.
+
+**3. No double deposits.** Stand in your own gateway and walk back and forth
+across the line. `EggsStolen` increases exactly once per egg — `ParkEntered`
+fires once per transition, not once per sample.
+
+**4. Storage refuses rather than destroys.**
+
+```lua
+local d = PDS.Get(game.Players:GetPlayers()[1])
+for i = 1, 50 do d.Eggs["filler" .. i] = { Rarity = "common", Origin = "plains", AcquiredAt = 0 } end
+```
+
+Now steal an egg and walk home. You get a red *Egg storage full* alert, and the
+egg **stays above your head** — nothing is destroyed. Clear the filler and walk
+through the gate again to bank it.
+
+**5. The escape/catch ratio.** This is the number that tells you whether the
+chase is tuned. docs/14 targets a 62–75 % escape rate:
+
+```lua
+local d = PDS.Get(game.Players:GetPlayers()[1])
+print(string.format("escaped %d, caught %d (%.0f%%)", d.Stats.ChasesEscaped, d.Stats.ChasesCaught,
+    d.Stats.ChasesEscaped / math.max(1, d.Stats.ChasesEscaped + d.Stats.ChasesCaught) * 100))
+```
+
+**6. Feel the walk.** Time a run to a zone whose gate is on the far side of the
+ring. It is long — deliberately. Zone teleports (Step 14) are what bring the
+loop from ~86 seconds to ~23.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| No SAFE! banner | `HUDController`/`EggCarryController` not re-pasted |
+| Egg deposits at any gate | `ownerUserId == player.UserId` check removed |
+| `EggsStolen` climbing while loitering | `ParkEntered` firing per sample instead of per transition |
+| Deposit silently loses an egg | Should be impossible — `TakeToken` and the profile write are one block |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,194 assertions** without Studio:
+Syntax-checks every source file and runs **2,225 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1060,6 +1135,7 @@ Fetches the Luau CLI on first run.
 | `tests/step7_spec.lua` | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection and risk ratings |
 | `tests/step8_spec.lua` | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, rarity roll distributions, and the luck tail guard |
 | `tests/step9_spec.lua` | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
+| `tests/step10_spec.lua` | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

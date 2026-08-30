@@ -32,10 +32,12 @@
 		EggService.GetCapacity(player) -> number
 		EggService.GetCarryPenalty(player) -> number     0..MaxCarryPenalty
 		EggService.ComputeLuck(player, zoneId) -> number
-		EggService.TakeToken(player, uid) -> token?      Step 10 deposits with this
+		EggService.TakeToken(player, uid) -> token?
+		EggService.DepositAll(player) -> deposited, refused
 
 		EggService.EggPickedUp   Signal(player, token, nest)
 		EggService.EggDropped    Signal(player, token, reason)
+		EggService.EggDeposited  Signal(player, token, eggUid)
 		EggService.RareGrab      Signal(player, token)   Legendary+, for Step 16
 
 	Depends on: NestService, SecurityService, PlayerDataService, ParkService,
@@ -64,8 +66,9 @@ local EggService = {}
 EggService.EggPickedUp = Signal.new()
 EggService.EggDropped = Signal.new()
 EggService.RareGrab = Signal.new()
+EggService.EggDeposited = Signal.new()
 
-local NestService, SecurityService, PlayerDataService
+local NestService, SecurityService, PlayerDataService, ParkService
 
 --- [player] = { [eggUid] = token }. Server-only, never replicated, never saved.
 local carried: { [Player]: { [string]: any } } = {}
@@ -607,6 +610,13 @@ function EggService.Drop(player: Player, uid: string, reason: string?): boolean
 	spawnLoose(token, position)
 	applySpeed(player)
 
+	-- Losing a carried egg is tracked separately from banking one: the gap
+	-- between EggsStolen and EggsLost is how well a player actually runs.
+	local data = PlayerDataService.Get(player)
+	if data then
+		data.Stats.EggsLost += 1
+	end
+
 	Log.debug("EggService", "%s dropped a %s egg (%s)", player.Name, token.Rarity, reason or "manual")
 	EggService.EggDropped:Fire(player, token, reason or "manual")
 	return true
@@ -665,12 +675,101 @@ function EggService.ResolveTokens(player: Player)
 	Log.info("EggService", "Returned %s's carried egg(s) to their nests", player.Name)
 end
 
+-- ── Deposit ─────────────────────────────────────────────────────────────────
+
+--- Fires the Notify remote directly. Step 16's NotificationService takes over
+--- the dispatch; until then this is the only feedback path that exists.
+local function notify(player: Player, kind: string, text: string, color: Color3?)
+	Net.FireClient("Notify", player, {
+		Kind = kind,
+		Text = text,
+		Color = color,
+		Duration = 2.5,
+	})
+end
+
+--[[
+	Banks everything the player is carrying. Returns (deposited, refused).
+
+	This is the moment the run pays off, and the moment a carried egg stops
+	being a token and becomes profile data. Each egg moves in ONE step -
+	TakeToken removes it from the carry table and the same block writes it into
+	the profile, with no resumption point between where it could exist in both
+	places or in neither.
+
+	A full store refuses rather than destroys. The player keeps carrying the
+	egg and is told why.
+]]
+function EggService.DepositAll(player: Player): (number, number)
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return 0, 0
+	end
+
+	local held = carried[player]
+	if not held or not next(held) then
+		return 0, 0
+	end
+
+	-- Snapshot the uids: TakeToken mutates the table being iterated.
+	local uids = {}
+	for uid in held do
+		table.insert(uids, uid)
+	end
+
+	local stored = 0
+	for _ in data.Eggs do
+		stored += 1
+	end
+
+	local deposited, refused = 0, 0
+
+	for _, uid in uids do
+		if stored >= GameConfig.EggStorageCap then
+			refused += 1
+			continue
+		end
+
+		local token = EggService.TakeToken(player, uid)
+		if token then
+			data.Eggs[token.Uid] = {
+				Rarity = token.Rarity,
+				Origin = token.Origin,
+				AcquiredAt = os.time(),
+			}
+			stored += 1
+			deposited += 1
+			data.Stats.EggsStolen += 1
+			EggService.EggDeposited:Fire(player, token, token.Uid)
+		end
+	end
+
+	if deposited > 0 then
+		-- One replication flush for the whole deposit rather than one per egg.
+		PlayerDataService.UpdateKeys(player, { "Eggs", "Stats" }, function() end, "deposit")
+
+		local suffix = if deposited > 1 then string.format(" (%d eggs)", deposited) else ""
+		notify(player, "banner", "SAFE!" .. suffix, Color3.fromHex("5FD35F"))
+
+		Log.info("EggService", "%s banked %d egg(s)", player.Name, deposited)
+	end
+
+	if refused > 0 then
+		notify(player, "alert",
+			string.format("Egg storage full - hatch some first (%d)", refused),
+			Color3.fromHex("FF4B3E"))
+	end
+
+	return deposited, refused
+end
+
 -- ── Lifecycle ───────────────────────────────────────────────────────────────
 
 function EggService.Init(app)
 	NestService = app.Get("NestService")
 	SecurityService = app.Get("SecurityService")
 	PlayerDataService = app.Get("PlayerDataService")
+	ParkService = app.Get("ParkService")
 
 	luckPowers = RarityConfig.LuckPowers()
 
@@ -691,6 +790,34 @@ function EggService.Start(app)
 
 	Net.OnEvent("RequestDropEgg", function(player: Player, eggUid: string)
 		EggService.Drop(player, eggUid, "manual")
+	end)
+
+	--[[
+		Manual deposit, for a player standing in their park with a refused egg
+		after freeing up space. The server re-checks that they are actually
+		home - the remote is a request, not an assertion.
+	]]
+	Net.OnEvent("RequestDepositEggs", function(player: Player)
+		if ParkService.IsInsideOwnPark(player) then
+			EggService.DepositAll(player)
+		end
+	end)
+
+	--[[
+		THE SAFE ZONE.
+
+		Crossing your own gate banks everything you are carrying. Detected from
+		ParkService's server-side position sampling, never from a client claim
+		or a Touched event - "I reached my park" is exactly the assertion an
+		exploiter would like to make from anywhere on the map (docs/03 §6).
+
+		ParkEntered fires once per transition, so loitering in the gateway
+		cannot produce a second deposit.
+	]]
+	ParkService.ParkEntered:Connect(function(player: Player, ownerUserId: number)
+		if ownerUserId == player.UserId then
+			EggService.DepositAll(player)
+		end
 	end)
 
 	-- An implausible move voids the carry outright. This is the defence against

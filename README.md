@@ -2,7 +2,7 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status:** Steps 1–9 of 24 complete. You can steal an egg and be chased for it. See [PROGRESS.md](PROGRESS.md) for what exists,
+> **Status:** Steps 1–10 of 24 complete. Steal an egg, survive the chase, keep it. See [PROGRESS.md](PROGRESS.md) for what exists,
 > [QUICKSTART.md](QUICKSTART.md) to run it, and [SETUP.md](SETUP.md) for the
 > per-step Studio detail.
 
@@ -18,7 +18,7 @@ dinosaur chases you home. Then other players try to steal your dinosaurs.
 offline test to a full Studio setup.
 
 ```bash
-./tests/run.sh    # 2,194 assertions, no Studio needed
+./tests/run.sh    # 2,225 assertions, no Studio needed
 ```
 
 ## Repository layout

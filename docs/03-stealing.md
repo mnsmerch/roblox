@@ -62,6 +62,13 @@ ground with three players sprinting at it.
 
 - The wild chase ends the instant your character's HRP crosses **your own** Park
   Gate plane. Guardians will not enter any park plot.
+- **In practice this is the rarer ending.** The leash (250 studs from the nest)
+  fires first for about 92 % of park-to-zone angles, so most chases end by
+  escaping rather than by getting home — measured in `tests/step10_spec.lua`.
+  A player whose park happens to face the zone they are robbing gets the
+  gate-crossing version; everyone else escapes in the zone and walks or
+  teleports home to bank. The gate remains the decisive line for **player
+  raids** (§4.2), where the thief must reach their own.
 - Guardians also de-aggro if you leave the zone boundary for > 8 s **or** you
   exceed 250 studs from the nest **or** 45 s elapse (`ChaseTimeout`).
 - Other players' parks are **not** safe from your guardian — running into a

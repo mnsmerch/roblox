@@ -66,7 +66,7 @@ WildAIService.ChaseStarted = Signal.new()
 WildAIService.ChaseEnded = Signal.new()
 WildAIService.ThiefCaught = Signal.new()
 
-local ParkService, EggService, NestService
+local ParkService, EggService, NestService, PlayerDataService
 
 --- [player] = chase. One guardian per thief; a second steal joins the same one.
 local chases: { [Player]: any } = {}
@@ -152,6 +152,19 @@ function WildAIService.EndChase(player: Player, reason: string)
 		chase.Model:Destroy()
 	end
 
+	--[[
+		Escapes are counted, catches are counted where they happen. The ratio
+		between them is the single most diagnostic number about whether the
+		chase is tuned - docs/14 targets a 62-75% escape rate, and this is
+		where that measurement comes from.
+	]]
+	if not chase.CaughtAt then
+		local data = PlayerDataService.Get(player)
+		if data then
+			data.Stats.ChasesEscaped += 1
+		end
+	end
+
 	Net.FireClient("ChaseState", player, { Active = false, Reason = reason })
 	Log.debug("WildAIService", "Chase on %s ended: %s", player.Name, reason)
 	WildAIService.ChaseEnded:Fire(player, reason, chase)
@@ -183,6 +196,11 @@ local function catchThief(player: Player, chase)
 	EggService.DropAll(player, "caught")
 
 	chase.CaughtAt = os.clock()
+
+	local data = PlayerDataService.Get(player)
+	if data then
+		data.Stats.ChasesCaught += 1
+	end
 
 	Net.FireClient("ChaseState", player, { Active = true, Caught = true })
 	Log.info("WildAIService", "%s was caught by a %s", player.Name, chase.SpeciesId)
@@ -548,6 +566,7 @@ function WildAIService.Init(app)
 	ParkService = app.Get("ParkService")
 	EggService = app.Get("EggService")
 	NestService = app.Get("NestService")
+	PlayerDataService = app.Get("PlayerDataService")
 
 	dinoAssets = Shared:WaitForChild("SAD_Assets"):WaitForChild("Dinos")
 

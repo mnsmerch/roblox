@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 9 of 24 complete.** Awaiting the Studio Play test before Step 10.
+## Status: **Step 10 of 24 complete.** The core loop closes. Awaiting the Studio Play test before Step 11.
 
 ## Completed
 
@@ -20,6 +20,7 @@ accident. Updated at the end of every build step.
 | 2026-08-29 | **Step 7** — world, zones & nests | Hub + 4 zones + 48 nests generated, 356 more assertions |
 | 2026-08-30 | **Step 8** — egg pickup & carrying | Rarity roll, carry tokens, loose eggs, 96 more assertions |
 | 2026-08-30 | **Step 9** — guardian AI & the chase | 20 archetypes, zone difficulty curve, 274 more assertions |
+| 2026-08-30 | **Step 10** — safe zone & deposit | The loop closes: steal → chase → keep it. 31 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -34,7 +35,7 @@ accident. Updated at the end of every build step.
 | 7 | Nests & the world | ✅ **done** |
 | 8 | Egg pickup & carrying | ✅ **done** |
 | 9 | Guardian AI & the chase | ✅ **done** |
-| 10 | Safe zone & deposit | ⬜ |
+| 10 | Safe zone & deposit | ✅ **done** |
 | 11 | Incubation & hatching | ⬜ |
 | 12 | Placement & income | ⬜ |
 | 13 | Upgrades & shop | ⬜ |
@@ -291,11 +292,13 @@ current value, then on every change at or under that path. No polling anywhere.
 | 26 | The guardian cap **recycles the longest-running chase**; no client-side Ghost Chase | A cosmetic guardian that cannot catch anyone is a lie the player eventually notices. Recycling bounds cost identically, guarantees every steal gets a real guardian, and letting the player who has run longest get away is a gift rather than a punishment | docs/09 §6 |
 | 27 | Added `ZoneConfig.GuardianSpeedBonus` (+0.00 / +0.04 / +0.08 / +0.12) | Without it the risk skulls on a nest sign are decoration — see the finding below | docs/03 §2 |
 | 28 | Guardian archetypes carry `CanGuard`; swimmers and apex tiers are excluded | A Plesiosaurus guarding a land nest cannot leave water and would stand motionless beside it. That is not a chase, it is a statue, and nothing throws | docs/03 §3 |
+| 29 | Added `GameConfig.EggStorageCap` (50) | docs/10 bounded `Dinos` at 235 entries but never bounded `Eggs`. An unbounded table grows until a DataStore write fails — the worst failure mode, arriving late and looking like nothing | docs/10 §2 |
+| 30 | docs/00's loop diagram amended: the chase resolves by **escape**, then you return home to bank | Measured: the 250-stud leash fires before the gate for ~92 % of park-to-zone angles. Guardians chasing across the map would be expensive and would make the leash dead code. The gate stays decisive for **player raids** | docs/00 §2, docs/03 §1.4 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 44 source files and runs **2,194
-assertions** outside Roblox. Last run: **2,194 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 44 source files and runs **2,225
+assertions** outside Roblox. Last run: **2,225 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -308,6 +311,7 @@ assertions** outside Roblox. Last run: **2,194 passed, 0 failed.**
 | `step7_spec` (356) | Zone ring clearance at the full 10-zone build-out, deterministic nest spacing, sign odds against the real weight tables, guardian selection, risk ratings |
 | `step8_spec` (96) | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, roll distributions, the luck tail guard |
 | `step9_spec` (274) | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
+| `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 
 Bugs the specs caught before they shipped:
 
@@ -367,6 +371,15 @@ Bugs the specs caught before they shipped:
     Result: Zone 1 catches 3 of 13 fleeing thieves (17.5–26.4 s), Zone 4
     catches 10 of 13 (9.6–19.5 s). Every one inside the 10–30 second window
     docs/00 publishes.
+
+11. **The map is too big to walk the loop.** Measured park-gate-to-nest
+    distances: 177 studs when a park happens to face a zone, **576 typical**,
+    1,443 opposite. That makes the walking micro-loop **86 seconds** against
+    docs/00's 45-second target. This is not a bug to fix by shrinking the map —
+    docs/02 already puts a Zone Shrine in every zone that registers it on the
+    Teleport Obelisk, and docs/08 puts a PARK button on the bottom bar. With
+    both, the loop is **23 seconds**. Step 14 is therefore load-bearing for the
+    game's tempo, not a convenience, and docs/00 now says so.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

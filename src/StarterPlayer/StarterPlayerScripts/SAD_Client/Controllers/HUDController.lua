@@ -50,6 +50,8 @@ local buttons = {}
 local actionPrompt
 local carryPanel
 local chaseBanner, chaseVignette
+local flashPanel
+local flashToken = 0
 local compass, eventBanner
 local railToggle
 
@@ -328,6 +330,44 @@ local function buildChase()
 	chaseBanner.Label = label
 end
 
+--[[
+	A transient centre banner: SAFE!, storage full, and anything else that needs
+	to be read in one glance mid-run.
+
+	Deliberately minimal. Step 16's NotificationController replaces this with
+	the proper queue, severities and cross-server takeovers - but without
+	something here, banking an egg produces no feedback at all and the run has
+	no ending.
+]]
+local function buildFlash()
+	local label = Create("TextLabel", {
+		Name = "Label",
+		Size = UDim2.fromScale(1, 1),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Display,
+		TextSize = Theme.TextSize.Display,
+		TextColor3 = Theme.Color.Text,
+		Text = "",
+		ZIndex = Theme.Layer.Notification + 1,
+	})
+
+	flashPanel = Widgets.Panel({
+		Name = "Flash",
+		Size = UDim2.new(0, 420, 0, 62),
+		Position = UDim2.fromScale(0.5, 0.34),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Color = Theme.Color.SurfaceRaised,
+		Transparency = 0.05,
+		StrokeColor = Theme.Color.Accent,
+		Visible = false,
+		ZIndex = Theme.Layer.Notification,
+		Children = { label },
+		Parent = UIController.Layer("notification"),
+	})
+
+	flashPanel.Label = label
+end
+
 local function buildRailToggle()
 	-- Below RailCollapseWidth the left rail folds behind one button
 	-- (docs/08 §4). Four extra icons is exactly what a 5.5" screen cannot
@@ -505,6 +545,29 @@ function HUDController.SetChaseProximity(fraction: number)
 	chaseVignette.BackgroundTransparency = 0.95 - math.clamp(fraction, 0, 1) * 0.25
 end
 
+--- Shows `text` for `duration` seconds. A later call replaces an earlier one
+--- rather than queueing, so the most recent thing is always what is readable.
+function HUDController.Flash(text: string, color: Color3?, duration: number?)
+	flashToken += 1
+	local token = flashToken
+
+	flashPanel.Visible = true
+	flashPanel.Label.Text = text
+	flashPanel.Label.TextColor3 = color or Theme.Color.Text
+
+	local stroke = flashPanel:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color or Theme.Color.Accent
+	end
+
+	task.delay(duration or 2.5, function()
+		-- Only the most recent flash may hide the panel.
+		if flashToken == token then
+			flashPanel.Visible = false
+		end
+	end)
+end
+
 function HUDController.SetCompass(text: string?)
 	compass.Text = text or ""
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
@@ -540,6 +603,7 @@ function HUDController.Init(app)
 	buildActionPrompt()
 	buildCarryPanel()
 	buildChase()
+	buildFlash()
 
 	Log.info("HUDController", "HUD built")
 end

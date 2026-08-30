@@ -278,6 +278,18 @@ function EggCarryController.Start(app)
 
 	Net.On("ChaseState", onChaseState)
 
+	--[[
+		Minimal Notify handling so banking an egg has an ending. Step 16's
+		NotificationController takes this over with the full queue and
+		severities; until then a banner is better than silence.
+	]]
+	Net.On("Notify", function(payload)
+		if type(payload) ~= "table" or not payload.Text then
+			return
+		end
+		HUDController.Flash(payload.Text, payload.Color, payload.Duration)
+	end)
+
 	-- Only the distance readouts need refreshing; carry contents and chase
 	-- starts are event-driven.
 	task.spawn(function()
