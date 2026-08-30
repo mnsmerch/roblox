@@ -51,6 +51,7 @@ local DinoConfig = require(Shared.Config.DinoConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local ParkConfig = require(Shared.Config.ParkConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
+local ZoneConfig = require(Shared.Config.ZoneConfig)
 local Economy = require(Shared.Modules.Economy)
 local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
@@ -70,6 +71,13 @@ ParkService.DinoRendered = Signal.new()
 
 local plots: { Model } = {}
 local origins: { CFrame } = {}
+
+--[[
+	The order `claimPlot` searches in: nearest the free zone first, so the walk
+	docs/00 §3 beat 2 budgets fifteen seconds for is the short one by default.
+	Computed once at Start, from ZoneConfig, because it never changes.
+]]
+local plotSearchOrder: { number } = {}
 local byUserId: { [number]: Model } = {}
 local plotOfPlayer: { [Player]: Model } = {}
 
@@ -427,8 +435,15 @@ end
 	anywhere inside here is how it happens.
 ]]
 local function claimPlot(player: Player): Model?
-	for index, plot in plots do
-		if plot:GetAttribute("OwnerUserId") == 0 then
+	--[[
+		Searched nearest-the-free-zone-first rather than in index order, so a
+		new player's walk out to Jurassic Plains is the short one by default.
+		See ParkConfig.PlotSearchOrder. Still a preference and never a
+		requirement: every plot is reachable by this loop, so it cannot starve.
+	]]
+	for _, index in plotSearchOrder do
+		local plot = plots[index]
+		if plot and plot:GetAttribute("OwnerUserId") == 0 then
 			plot:SetAttribute("OwnerUserId", player.UserId)
 			byUserId[player.UserId] = plot
 			plotOfPlayer[player] = plot
@@ -600,6 +615,15 @@ function ParkService.Init(app)
 
 	local container = Instance.new("Folder")
 	container.Name = "ParkPlots"
+
+	--[[
+		Sorted against the FIRST zone in ZoneConfig.Order - the free one every
+		new player is sent to. If the free zone ever moves, this follows it.
+	]]
+	local firstZoneId = ZoneConfig.Order[1]
+	local firstZone = firstZoneId and ZoneConfig.Zones[firstZoneId]
+	plotSearchOrder = ParkConfig.PlotSearchOrder(
+		firstZone and firstZone.RingSlot, ZoneConfig.SlotCount)
 
 	local startedAt = os.clock()
 	for index = 1, ParkConfig.PlotCount do

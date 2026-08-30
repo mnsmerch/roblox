@@ -53,6 +53,7 @@ local Workspace = game:GetService("Workspace")
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local GameConfig = require(Shared.Config.GameConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
+local TutorialConfig = require(Shared.Config.TutorialConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local ZoneConfig = require(Shared.Config.ZoneConfig)
@@ -583,8 +584,16 @@ function EggService.TryPickup(player: Player, nestId: string, slotIndex: number)
 		return false, claimReason
 	end
 
-	-- REVEAL #1. Rolled here, from server state, with a server RNG.
-	local rarity = EggService.RollRarity(player, nest.ZoneId)
+	--[[
+		REVEAL #1. Rolled here, from server state, with a server RNG.
+
+		Except for the tutorial's first egg, which docs/00 §3 beat 4 forces to
+		Common so the player learns what a rarity flash MEANS before the odds
+		start mattering. A pure function of the profile, consulted at the point
+		the roll already happens - the tutorial drives this path rather than
+		having one of its own (docs/13 §Step 23).
+	]]
+	local rarity = TutorialConfig.ForcedRarity(data) or EggService.RollRarity(player, nest.ZoneId)
 	local tier = RarityConfig.Tiers[rarity]
 
 	local token = {

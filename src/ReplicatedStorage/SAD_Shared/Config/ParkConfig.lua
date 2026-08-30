@@ -190,6 +190,63 @@ function ParkConfig.NeighbourChord(): number
 	return 2 * ParkConfig.RingRadius() * math.sin(math.pi / ParkConfig.PlotCount)
 end
 
+--[[
+	═══ WHICH PLOT A JOINING PLAYER IS HANDED ══════════════════════════════════
+	Plots used to be claimed in index order, which makes the walk from a new
+	player's park to the free zone a coin flip: measured, 202 studs from the
+	nearest plot and 1,348 from the furthest - ten seconds against sixty-seven,
+	against docs/00 §3's FTUE budget of fifteen for that beat.
+
+	So the search order is sorted by angular distance to the first zone's ring
+	slot instead. Plots fill outward from the shortest walk.
+
+	Be precise about what that buys, because it is easy to overclaim: it does
+	NOT reduce walking. A full server hands out all 24 plots either way, and the
+	measured average over the whole ring is identical to the stud. What it does
+	is FRONT-LOAD the short walks - measured, the first eight joiners walk 34%
+	less than index order would send them - and servers are rarely full, so the
+	person who joins into a half-empty one is who this is for.
+
+	It does not fix the worst case either: the twenty-fourth player still walks
+	the long way, and no plot ordering can change that. That one is a
+	level-design decision (a second Jurassic Plains entrance, or the tutorial
+	granting an Obelisk hop) rather than a config change. See PROGRESS.md
+	finding 42.
+
+	Pure and derived, so changing `PlotCount` or a zone's ring slot re-sorts it
+	rather than needing a new hand-written list.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+function ParkConfig.PlotSearchOrder(zoneRingSlot: number?, zoneSlotCount: number?): { number }
+	local order = {}
+	for index = 1, ParkConfig.PlotCount do
+		order[index] = index
+	end
+
+	-- Without a zone to aim at, index order is the honest default.
+	if not zoneRingSlot or not zoneSlotCount then
+		return order
+	end
+
+	local targetAngle = (zoneRingSlot - 1) / zoneSlotCount * math.pi * 2
+
+	local function separation(index: number): number
+		local angle = (index - 1) / ParkConfig.PlotCount * math.pi * 2
+		local delta = math.abs(angle - targetAngle) % (math.pi * 2)
+		return math.min(delta, math.pi * 2 - delta)
+	end
+
+	table.sort(order, function(a, b)
+		local sa, sb = separation(a), separation(b)
+		if math.abs(sa - sb) < 1e-9 then
+			-- A stable tiebreak, so the order is the same on every server.
+			return a < b
+		end
+		return sa < sb
+	end)
+	return order
+end
+
 function ParkConfig.MinimumSeparation(): number
 	local step = math.pi * 2 / ParkConfig.PlotCount
 	local half = ParkConfig.PlotSize * 0.5

@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 22 of 24 complete.** The loop is playable, resettable, purchasable and ranked. Awaiting the Studio Play tests before Step 23.
+## Status: **Step 23 of 24 complete.** The loop is playable, resettable, purchasable, ranked and taught. Awaiting the Studio Play tests before Step 24.
 
 ## Completed
 
@@ -33,6 +33,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 20** — rebirth | The one-write reset, the shared preview, 124 more assertions |
 | 2026-08-30 | **Step 21** — purchases | 6 passes, 8 products, the receipt ring, 162 more assertions |
 | 2026-08-30 | **Step 22** — leaderboards | 4 boards, the throttle, the Colosseum, 113 more assertions |
+| 2026-08-30 | **Step 23** — tutorial | 12 beats, four bends, the server-owned step, 259 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -60,7 +61,7 @@ accident. Updated at the end of every build step.
 | 20 | Rebirth | ✅ **done** |
 | 21 | Purchases | ✅ **done** |
 | 22 | Leaderboards | ✅ **done** |
-| 23 | Tutorial | ⬜ |
+| 23 | Tutorial | ✅ **done** |
 | 24 | Polish, analytics, hardening | ⬜ |
 
 ## What exists in Studio
@@ -89,6 +90,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/IndexConfig` | ModuleScript | Milestones, rarity sets, and a **counted** completion denominator |
 | `Config/ProductConfig` | ModuleScript | 6 gamepasses + 8 products, their effects, and **no invented asset ids** |
 | `Config/LeaderboardConfig` | ModuleScript | 4 boards, the value ceiling, and the budget arithmetic that sets the schedule |
+| `Config/TutorialConfig` | ModuleScript | The 12 beats, the four bends, and the advance check — all pure |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -149,6 +151,7 @@ rebuilds this on every server start.
 | `Services/RebirthService` | ModuleScript | Eligibility, the one-write reset, grants, the Cache |
 | `Services/PurchaseService` | ModuleScript | **The only file that touches MarketplaceService.** Receipts, ownership, server boosts |
 | `Services/LeaderboardService` | ModuleScript | **The only file that touches OrderedDataStore.** Throttled writes, the 60 s read cache |
+| `Services/TutorialService` | ModuleScript | Owns the step number; checks every advance against real state |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -587,6 +590,55 @@ the server writes the number and the client pins it under the list, and two
 implementations would show a player a figure that disagrees with the board they
 are standing in front of. It is never *trusted* from the client, only displayed.
 
+### Step 23 — tutorial
+
+```
+TutorialConfig.Beats / StepCount / TotalWords
+TutorialConfig.Get(step) / IsActive(data) / StepOf(data)
+TutorialConfig.ForcedRarity(data) -> "common"?      beat 4
+TutorialConfig.ForcedHatchSecs(data) -> 10?         beat 8
+TutorialConfig.ChaseSpeedCap(data, thiefSpeed) -> number?   beats 5-6
+TutorialConfig.TopUpFor(data, cost) -> number       beat 11
+TutorialConfig.CanAdvance(data, toStep, facts) -> ok, reason?
+TutorialConfig.ValidateRequirements(known) -> ok, problem?
+
+TutorialService.State(player) / IsActive(player)
+TutorialService.Advance(player, toStep) -> ok, reason?
+TutorialService.Skip(player) -> ok, reason?
+TutorialService.FactsFrom(data, live) / Facts(player)
+TutorialService.ValidateFacts()                     asserted at Start
+TutorialService.StepChanged  Signal(player, step, beat?)
+TutorialService.Finished     Signal(player, skipped)
+
+ParkConfig.PlotSearchOrder(zoneRingSlot?, zoneSlotCount?) -> { index }
+```
+
+**It drives the real systems; it does not replace them.** There is no tutorial
+sandbox, no second pickup path and no fake hatch. The four things docs/00 §3
+bends are pure functions of the profile, consulted by `EggService`,
+`IncubationService` and `WildAIService` at the point each already computes that
+number — and every one of them returns nil for anybody not mid-tutorial, which
+the spec asserts for a graduate, a skipper and a profile with no tutorial state
+at all. That is the difference between a modifier and a fork.
+
+**The step number is server state.** `RequestTutorialStep` carries a number and
+nothing else — it is the client saying "I think I finished that one", and the
+server checks it against what the player has actually done. Nine of the eleven
+advancing beats are gated on real state. A jump, a replay and a re-entry after
+finishing are all refused, which matters because `Tutorial.Completed` is the
+metric docs/00 targets at >80 % and beat 11 pays a Fossil top-up.
+
+**The chase cap is a cap, not a speed.** It can only ever make a chase easier,
+so a slow archetype does not get a tutorial speed *boost* — which would be the
+opposite of the promise. Measured: the fastest archetype runs at 21.2 against a
+thief's 20 and would catch them; capped, every one of the 20 is below 20.
+
+**No beat can deadlock.** A beat requiring something the server never computes
+would sit there being asked and refused forever. `TutorialService.ValidateFacts`
+asserts the requirement set and the computed set match at boot — the same
+coverage discipline the replication allowlist and `RebirthConfig`'s three lists
+use — and the spec drives it to a real failure.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -711,6 +763,7 @@ client never hears about; there is no polling fallback by design.
 | `RebirthController` | ModuleScript | The keep/lose/gain confirm screen |
 | `PurchaseController` | ModuleScript | The Robux store, the honesty panel, the server-boost banner and Thanks. **Prompts; never grants** |
 | `LeaderboardController` | ModuleScript | The boards screen and the Colosseum's pillars and statues, from one cached fetch |
+| `TutorialController` | ModuleScript | Professor Rok, one world arrow, one objective line, skip. **Asks; never decides** |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -851,11 +904,18 @@ current value, then on every change at or under that path. No polling anywhere.
 | 95 | `EconomyService.SettleBank` now records `Stats.PeakIncomePerSec` | Nothing had ever written it, and the Highest Income board reads it — see finding 38. Recorded here because this is the one function every rate change goes through, and peak rather than current so selling a park to fund a rebirth does not drop you off the board | docs/10 §1 |
 | 96 | Added `LeaderboardController` to the client roster (#21) | docs/09 §1's client list has no home for the boards screen, and the Colosseum's SurfaceGuis are presentation over server truth — the same call `WeatherController` made about Lighting. One fetch feeds both surfaces | docs/09 §1, docs/02 §1.1 |
 | 97 | docs/05 §6's rebirth-20 row corrected: **1.00 × 10¹⁹**, not 5.4 × 10¹⁹ | The formula is `250,000 × 5.2^(n-1)`; the table's row applied the exponent as n. Every other row in the table reproduces from the formula, so the row was the error, not the formula | docs/05 §6 |
+| 98 | Added `TutorialConfig` as config module #19 | The four bends have to be readable by `EggService`, `IncubationService` and `WildAIService` without any of them depending on `TutorialService` — a config they all already require is the only shape that does not create three new service edges. It also makes every bend pure, so "is this a no-op for a graduate" is a spec assertion rather than a claim | docs/09 §1, docs/00 §3 |
+| 99 | `RequestTutorialStep(0)` is the **skip** signal | docs/00 §3 needs a skip and Step 4 froze the remote list. Overloading the existing remote rather than adding a `RequestTutorialSkip` that carries no argument at all: the rate limit, the argument validation and the handler already exist, and 0 is not a valid step | docs/09 §3 |
+| 100 | docs/08 §6's "the step auto-completes" ships as "the client keeps asking" | A client that could declare a step complete could declare the LAST one complete and take the grant. After 60 s the ask repeats rather than the client deciding; a player who has done the thing advances on the next ask, one who has not sees the enlarged arrow and the hint. The player-facing behaviour docs/08 describes is preserved; the authority is not moved | docs/08 §6 |
+| 101 | Beat 11 **tops the player up** to the first upgrade's price | docs/00's beat 10 shows "+120 Fossils!" and beat 11 says the upgrade "costs exactly what you now have"; the cheapest track is 800, so both cannot be literal. A top-up rather than a grant, so a player who earned 700 gets 100 and one who has 800 gets nothing — "exactly what you now have" stays true either way | docs/00 §3 |
+| 102 | The tutorial's skip egg is granted through `RewardGrant` | Step 19 made it "the one place a reward is paid out". A tutorial egg written straight into `Profile.Eggs` would skip the storage cap, the notification and the analytics that every other granted egg goes through | docs/05 §7 |
+| 103 | Added `ParkConfig.PlotSearchOrder`; plots are claimed nearest-the-free-zone-first | docs/00 §3 budgets 15 s for the walk out to Jurassic Plains and the blockout makes it 10–67 s depending on plot. Sorting the claim order front-loads the short walks — measured, the first eight joiners walk 33 % less. It does not reduce total walking and does not fix the worst case; see finding 42 | docs/00 §3, docs/02 §1.1 |
+| 104 | Added `TutorialService` (server) and `TutorialController` (client) | docs/13 §Step 23 asks for "`TutorialController` + a small server validator in `PlayerDataService`". The validator is a service instead: it needs signals from `WildAIService` and `EconomyService`, a remote handler, and a boot-time coverage assertion, none of which belong in the data layer. `PlayerDataService` stays the thing that reads and writes profiles | docs/09 §1, docs/13 §Step 23 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 88 source files and runs **3,831
-assertions** outside Roblox. Last run: **3,831 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 91 source files and runs **4,090
+assertions** outside Roblox. Last run: **4,090 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -871,6 +931,7 @@ assertions** outside Roblox. Last run: **3,831 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step23_spec` (259) | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate, a skipper and a stateless profile, the chase cap driven against every one of the 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the two cheats (jump and replay) refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's fifteen-second budget |
 | `step22_spec` (113) | The four V1 boards against docs/12's list and docs/10 §4's reserved store names, every board's value read off a profile including the emptied park that must keep its Income place, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates computed at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against a naive 14,400, the rank contract for a player outside the top 100, and the Colosseum's geometry against the plaza and the park ring at 1, 4 and 8 pillars |
 | `step21_spec` (162) | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; **no asset id invented**, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches *and* against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; server purchases; VIP's offline rate all the way through to the hourly payout; every gamepass effect proven to declare a combination mode; and both store orders proven to cover the catalogue exactly once |
 | `step20_spec` (123) | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant reaching its cap, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
@@ -1391,6 +1452,42 @@ Bugs the specs caught before they shipped:
     stretches itself to ~92 s. Same shape as the clamped no-repeat rule in
     Step 18 — a number that corrects itself as content ships rather than one
     somebody has to remember.
+
+42. **docs/00's FTUE beat 2 is off by roughly fifty times.** The table says the
+    gate to Jurassic Plains is "25 studs away" and budgets fifteen seconds for
+    the walk. The blockout puts the park ring at 573 and the zone's near edge
+    at 775, so the real walk is **202 studs from the closest plot and 1,348
+    from the furthest** — 10 seconds against 67, at walkspeed 20.
+
+    Sixty-seven seconds is 45 % of the whole 2m30 FTUE budget spent on one beat,
+    for a player whose only mistake was being handed the wrong plot.
+
+    Half of it is fixed here: `ParkConfig.PlotSearchOrder` claims plots nearest
+    the free zone first instead of in index order. Be precise about what that
+    buys, because it is easy to overclaim — it does **not** reduce walking. A
+    full server hands out all 24 plots either way and the average over the whole
+    ring is identical to the stud. What it does is front-load the short walks,
+    and measured, the first eight joiners walk 33 % less than index order sent
+    them. Servers are rarely full, so that is the case worth improving.
+
+    The other half is not fixable in config and is left stated: the last joiner
+    on a full server still walks the long way, and no plot ordering changes
+    that. It needs a level-design decision — a second Plains entrance, or the
+    tutorial granting an Obelisk hop — so it is recorded rather than guessed at.
+
+43. **The "stateless profile" fixture was quietly not stateless.** Building it
+    as `profile({ Tutorial = nil })` looks like it removes the field. It does
+    not: `pairs` skips a nil value, so the override never ran and the fixture
+    was an ordinary step-1 profile. Four assertions about a profile with no
+    tutorial state were really four assertions about a profile mid-tutorial —
+    and they failed, which is the only reason it was noticed.
+
+    Worth recording because it is a property of the language rather than of this
+    code, and every spec in this project builds fixtures the same way: an
+    override table can add and change fields but can never remove one. The
+    fixture now deletes the key after construction, and the case it was written
+    for — an old save reaching a server before Reconcile fills the field — is
+    genuinely covered.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

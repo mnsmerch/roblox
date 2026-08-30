@@ -150,6 +150,11 @@ notification queue is client-side but every entry originates from a server event
 - A single animated arrow in world space, never a maze of highlights.
 - Every FTUE step has a 25-second timeout after which the arrow enlarges and
   a hint appears; after 60 s the step auto-completes so nobody gets stuck.
+  *(Shipped as: after 60 s the client keeps ASKING rather than declaring the
+  step done. The step number is server state, and a client that could declare a
+  step complete could declare the last one complete and take the grant. In
+  practice a player who has genuinely done the thing advances on the next ask;
+  one who has not sees an enlarged arrow and the hint until they do.)*
 
 ## 7. Accessibility
 

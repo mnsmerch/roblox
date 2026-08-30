@@ -57,7 +57,7 @@ require = function(target)
 	return _realRequire(target)
 end
 
---@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ProductConfig=src/ReplicatedStorage/SAD_Shared/Config/ProductConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Signal=src/ReplicatedStorage/SAD_Shared/Modules/Signal.lua@
+--@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ProductConfig=src/ReplicatedStorage/SAD_Shared/Config/ProductConfig.lua TutorialConfig=src/ReplicatedStorage/SAD_Shared/Config/TutorialConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Signal=src/ReplicatedStorage/SAD_Shared/Modules/Signal.lua@
 
 _shared.Config.GameConfig = GameConfig
 _shared.Config.RarityConfig = RarityConfig
@@ -66,6 +66,7 @@ _shared.Config.UpgradeConfig = UpgradeConfig
 _shared.Config.ZoneConfig = ZoneConfig
 _shared.Config.DailyConfig = DailyConfig
 _shared.Config.ProductConfig = ProductConfig
+_shared.Config.TutorialConfig = TutorialConfig
 _shared.Modules.RNG = RNG
 _shared.Modules.Signal = Signal
 _shared.Modules.Log = { debug = function() end, info = function() end, warn = function() end, error = function() end }

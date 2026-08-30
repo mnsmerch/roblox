@@ -73,6 +73,7 @@ local SERVICE_ORDER = {
 	"EventService", -- Step 18
 	"PurchaseService", -- Step 21
 	"LeaderboardService", -- Step 22
+	"TutorialService", -- Step 23
 }
 
 local servicesFolder = script.Parent:WaitForChild("Services")

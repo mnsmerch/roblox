@@ -106,7 +106,7 @@ time and disappears permanently after step 10.
 | # | Beat | Time | On-screen text | What it teaches |
 |---|---|---|---|---|
 | 1 | Spawn directly *inside your own empty park*, gate open, big glowing arrow | 0:00 | "This is YOUR park!" | Ownership |
-| 2 | Arrow points out the gate to Jurassic Plains (25 studs away) | 0:10 | "Follow me!" | The world is close |
+| 2 | Arrow points out the gate to Jurassic Plains (**202–1,348 studs**, see below) | 0:10 | "Follow me!" | The world is close |
 | 3 | Walk to a highlighted **Starter Nest** with one green egg | 0:25 | "See that egg? TAKE IT." | The verb |
 | 4 | Hold E / tap the button to grab | 0:35 | Rarity flash: **COMMON** | Reveal #1 |
 | 5 | A cartoon Parasaurolophus honks and chases (deliberately slow, cannot catch you on the first steal) | 0:38 | **"RUN!!!"** full-screen | The pillar |
@@ -122,9 +122,28 @@ time and disappears permanently after step 10.
 - The first chase is unlosable. The guardian's speed is capped below the
   player's. The player must *feel* the chase, not fail it.
 - No menu is opened for the player during the FTUE except the upgrade board.
-- Total forced reading: under 60 words.
+- Total forced reading: under 60 words. *(Shipped: **37**, longest bubble 5 words.)*
 - If a player skips, they still receive the tutorial egg in their inventory.
 - Completion is tracked (`TutorialCompleted`); target **> 80 %**.
+
+**Beat 2's distance, measured (Step 23).** The table said 25 studs. The blockout
+puts the park ring at 573 and Jurassic Plains' near edge at 775, so the walk is
+**202 studs from the closest plot and 1,348 from the furthest** — 10 seconds
+against 67, at walkspeed 20, against the 15 seconds this beat is budgeted.
+
+Plots are therefore claimed nearest-the-free-zone-first rather than in index
+order (`ParkConfig.PlotSearchOrder`). That does not reduce walking — a full
+server hands out all 24 plots either way — it front-loads the short walks, and
+measured, the first eight joiners walk 33 % less than index order sent them. The
+worst case is unchanged and no plot ordering can change it: fixing that is a
+level-design decision (a second Plains entrance, or the tutorial granting an
+Obelisk hop). See PROGRESS.md finding 42.
+
+**Beat 10 and beat 11 cannot both be literal.** Beat 10 shows "+120 Fossils!"
+and beat 11 says the first upgrade "costs exactly what you now have"; the
+cheapest upgrade track is 800. So entering beat 11 tops the player up to the
+price — a top-up, never a grant, so a player who earned 700 gets 100 and one who
+already has 800 gets nothing. "Exactly what you now have" is true either way.
 
 ---
 

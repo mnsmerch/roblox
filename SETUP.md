@@ -666,6 +666,41 @@ park worth a trillion Fossils will appear on the real board.
 
 ---
 
+## Step 23 — tutorial
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/TutorialConfig` | `src/.../Config/TutorialConfig.lua` *(new)* |
+| `Services/TutorialService` | `src/.../Services/TutorialService/init.lua` *(new)* |
+| `SAD_Client/Controllers/TutorialController` | `src/.../Controllers/TutorialController.lua` *(new)* |
+| `SAD_Shared/Config/ParkConfig` | *(re-paste — `PlotSearchOrder`)* |
+| `Services/EggService` | *(re-paste — the forced first rarity)* |
+| `Services/IncubationService` | *(re-paste — the forced 10-second hatch)* |
+| `Services/WildAIService` | *(re-paste — the chase speed cap)* |
+| `Services/ParkService` | *(re-paste — claims plots nearest the free zone)* |
+| `SAD_Server/Bootstrap` | *(re-paste — `TutorialService` in the roster)* |
+| `SAD_Client/Bootstrap` | *(re-paste — `TutorialController` in the roster)* |
+
+Both Bootstraps change this step. `TutorialService` and `TutorialController` are
+each **new to their roster** and will never load without them.
+
+**Re-paste `ParkService` and delete `Workspace → SAD_World` once.** The plot
+claim order changed, and an old ring in the place file still carries whatever
+`OwnerUserId` attributes the last session left on it.
+
+### Professor Rok has no asset id
+
+He is built from parts in `TutorialController` — a green body, a head and a
+yellow hard hat — for the same reason `SoundController` has no audio ids and
+`ProductConfig` has no product ids: an invented `rbxassetid://` is a silent 404
+that looks like working code.
+
+To replace him with a real model, put a Model named **`ProfessorRok`** anywhere
+under `ReplicatedStorage/SAD_Assets`. The controller clones that instead, with
+no code change.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -673,7 +708,7 @@ Press **Play**. The Output window should show, in order:
 ```
 [SAD/S] ======== Steal a Dinosaur v0.1.0 starting ========
 [SAD/S][Net] Published 40 events and 4 functions
-[SAD/S][Boot] Not built yet (24): SecurityService, DataService, ...
+[SAD/S][Boot] Not built yet (25): SecurityService, DataService, ...
 [SAD/S][Boot] Loaded 0 service(s):
 [SAD/S] ======== Server boot complete (N ms) ========
 [SAD/C] ======== Steal a Dinosaur v0.1.0 client starting ========
@@ -2771,9 +2806,113 @@ name on it, which is still readable.
 
 ---
 
+## Step 23 test
+
+docs/13's four tests, in order.
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][TutorialService] Ready. 12 beats, 37 words, hint at 25s, auto-advance at 60s
+[SAD/C][TutorialController] Ready. 12 beats, 37 words
+```
+
+If the server refuses to boot naming a beat and a fact, that is the deadlock
+guard working: a beat requires something nothing computes, and it would have sat
+there being asked and refused forever.
+
+**2. A fresh profile completes it in under 3 minutes.** docs/13's first test.
+Reset yourself and play it straight through:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+PDS.Update(p, function(d)
+    d.Tutorial = { Step = 1, Completed = false, SkippedAt = nil }
+end, "test")
+```
+
+Rok appears, one arrow, one objective line. Follow it. Time yourself — the
+target is 2m30, and beat 2's walk is the one to watch: 10 seconds from a plot
+near Jurassic Plains and up to 67 from the far side (finding 42).
+
+Rok **disappears permanently at step 11**, which is also the only beat that
+opens a menu.
+
+**3. Skip works.** Press SKIP at any beat. The tutorial ends and — if you have
+not already got one — a Common egg arrives in storage, granted through
+`RewardGrant` like every other reward:
+
+```lua
+for uid, egg in PDS.Get(p).Eggs do print(uid, egg.Rarity, egg.Origin) end
+print(PDS.Get(p).Tutorial)   -- SkippedAt set, Completed false
+```
+
+Skipping twice grants nothing the second time.
+
+**4. Disconnect at step 6 and rejoin.** docs/13's third test. Leave mid-tutorial
+and come back: `TutorialState` is pushed on profile load, so the panel returns
+at the step you left. The step lives in the profile — nothing special is needed
+for the resume, only for the client to be told.
+
+**5. Idle at every step.** docs/13's fourth test. Stand still. At 25 s the arrow
+enlarges and the hint appears; at 60 s the client starts asking to advance every
+half second.
+
+Note what that does *not* do: the step does not complete because the client said
+so. A player idling on "get back inside your park" who is not in their park
+stays there — the ask is refused. Walk in and it advances on the next ask. See
+deviation 100 for why the authority is not moved.
+
+**6. The four bends, and that they are bends.** The heart of docs/13's warning
+that the tutorial "must drive the real systems, never bypass them":
+
+```lua
+local TC = require(game.ReplicatedStorage.SAD_Shared.Config.TutorialConfig)
+local d = PDS.Get(p)
+
+print(TC.ForcedRarity(d))              -- "common" on beats 1-4, nil after
+print(TC.ForcedHatchSecs(d))           -- 10 up to beat 8, nil after
+print(TC.ChaseSpeedCap(d, 20))         -- ~16.4 on beats 5-6, nil after
+print(TC.TopUpFor(d, 800))             -- 800 on beat 11 if you are broke
+```
+
+Then finish or skip the tutorial and print all four again: **every one is nil or
+zero**. That is the whole design — the tutorial is a modifier on the real path,
+not a fork off it. The first egg after the tutorial rolls real odds; the second
+hatch takes the real 30 seconds; the second chase can catch you.
+
+**7. The step cannot be faked.** The exploit that matters, because
+`Tutorial.Completed` is a tracked metric and beat 11 pays Fossils:
+
+```lua
+local TS = require(game.ServerScriptService.SAD_Server.Services.TutorialService)
+print(TS.Advance(p, 12))    -- false, "not the next step"
+print(TS.Advance(p, 1))     -- false if you are past it
+print(TS.Facts(p))          -- what the server can actually prove
+```
+
+Fire `RequestTutorialStep` with 12 from a client and nothing happens.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| The server refuses to boot naming a beat | The deadlock guard working — a beat requires a fact nothing computes |
+| The tutorial sticks on one beat forever | Its `Requires` is never true; check `TutorialService.Facts(p)` |
+| The second egg is also Common | `ForcedRarity` not released past beat 4 — it must return nil |
+| Every hatch takes 10 seconds | Same, for `ForcedHatchSecs` past beat 8 |
+| Guardians are slow for everyone | `ChaseSpeedCap` leaking past beat 6 |
+| A player finishes instantly | Something advancing the step client-side; the server must own it |
+| Two Common eggs after a skip | The skip granting without checking for one already held |
+| Rok stands in front of the shop | He must be destroyed after step 10, before the upgrade beat |
+| Beat 2's walk takes over a minute | A far plot — expected, see finding 42 |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,831 assertions** without Studio:
+Syntax-checks every source file and runs **4,090 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2803,6 +2942,7 @@ Fetches the Luau CLI on first run.
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
+| `tests/step23_spec.lua` | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate/skipper/stateless profile, the chase cap driven against all 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the jump and replay cheats refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's budget |
 | `tests/step22_spec.lua` | The four V1 boards against docs/12's list and docs/10 §4's store names, every board's value read off a profile, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against 14,400, the rank contract outside the top 100, and the Colosseum's geometry at 1, 4 and 8 pillars |
 | `tests/step21_spec.lua` | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; no asset id invented, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches and against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; VIP's offline rate through to the hourly payout; and both store orders proven to cover the catalogue exactly once |
 

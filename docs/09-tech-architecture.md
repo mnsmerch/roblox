@@ -91,6 +91,7 @@ ServerScriptService
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, ownership cache, server boosts
         ├── LeaderboardService       the ONLY file that touches OrderedDataStore
+        ├── TutorialService          owns the step number; checks every advance
         ├── NotificationService      the one place a notification is created
         ├── BroadcastService         MessagingService: the only file that knows it exists
         └── AnalyticsService         AnalyticsService wrappers + custom logging
@@ -123,7 +124,7 @@ StarterPlayer
             ├── RebirthController    the keep/lose/gain confirm screen
             ├── PurchaseController   the store, the honesty panel, Thanks
             ├── LeaderboardController  the boards screen and the Colosseum
-            ├── TutorialController
+            ├── TutorialController   Rok, one arrow, one objective line, skip
             └── SettingsController
 
 (StarterGui is empty. SAD_UI is CREATED AT RUNTIME by UIController into
@@ -239,7 +240,7 @@ over-limit calls silently, and logs offenders to `SecurityService`.
 | `RequestRerollQuest` | 1 / 2 | `questId: string` |
 | `RequestUseItem` | 2 / 4 | `itemId: string` |
 | `RequestSetSetting` | 5 / 10 | `key: string, value: any` |
-| `RequestTutorialStep` | 3 / 5 | `step: number` |
+| `RequestTutorialStep` | 3 / 5 | `step: number` — an *ask*, not a command; the server checks it against real state. **Step 0 is the skip signal**, overloaded onto this remote rather than adding a second one that carries no argument |
 | `RequestEventAction` | 3 / 6 | `eventId: string, action: string, arg: any?` |
 | `RequestThanks` | 2 / 3 | `buyerUserId: number` — docs/07 §4's Thanks button |
 
@@ -257,7 +258,7 @@ over-limit calls silently, and logs offenders to `SecurityService`.
 | `ServerBoost` | `{buyerUserId, buyerName, product, windowSecs}` — a server-wide purchase, and the window in which Thanks may be sent |
 | `ChaseState` | `{active, guardianModelName, distance}` |
 | `IncomePopup` | `{amount, worldPos}` |
-| `TutorialState` | `{step, hintText}` |
+| `TutorialState` | `{Step, Completed, Skipped}` — pushed on every change and on profile load, which is how docs/13's resume test works |
 
 ### 3.3 RemoteFunctions (kept minimal — 4 total)
 

@@ -41,6 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local MutationConfig = require(Shared.Config.MutationConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
+local TutorialConfig = require(Shared.Config.TutorialConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local Economy = require(Shared.Modules.Economy)
 local Format = require(Shared.Modules.Format)
@@ -71,6 +72,17 @@ function IncubationService.DurationFor(data, rarity: string): number
 	local tier = RarityConfig.Tiers[rarity]
 	if not tier then
 		return 60
+	end
+
+	--[[
+		docs/00 §3 beat 8 forces the tutorial egg to ten seconds, "with full
+		crack VFX". Consulted here rather than hatched separately, so the reveal,
+		the mutation roll and the storage check are all the ones a real hatch
+		uses - only the clock is different.
+	]]
+	local forced = TutorialConfig.ForcedHatchSecs(data)
+	if forced then
+		return forced
 	end
 
 	local speedMult = Stats.IncubationMult(data)

@@ -53,6 +53,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local ChaseConfig = require(Shared.Config.ChaseConfig)
+local TutorialConfig = require(Shared.Config.TutorialConfig)
 local DinoConfig = require(Shared.Config.DinoConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local ZoneConfig = require(Shared.Config.ZoneConfig)
@@ -221,6 +222,27 @@ end
 	it re-aims the one already after you, which is both cheaper and what a
 	player expects.
 ]]
+--[[
+	docs/00 §3 beat 5: "The first chase is unlosable. The guardian's speed is
+	capped below the player's. The player must FEEL the chase, not fail it."
+
+	A CAP, not a speed. It can only ever make the chase easier - a guardian that
+	was already slower than the cap keeps its own speed - so a slow archetype
+	does not get a tutorial speed boost, which would be the opposite of the
+	promise. Applied at aggro alongside the zone bonus and the event multiplier,
+	so the whole chase runs at one decided-once speed.
+
+	Returns `speed` unchanged for everybody who is not on beat 5 or 6.
+]]
+local function tutorialCapped(player: Player, thiefSpeed: number, speed: number): number
+	local data = PlayerDataService.Get(player)
+	local cap = TutorialConfig.ChaseSpeedCap(data, thiefSpeed)
+	if not cap then
+		return speed
+	end
+	return math.min(speed, cap)
+end
+
 function WildAIService.StartChase(player: Player, nest, token)
 	local existing = chases[player]
 	if existing then
@@ -290,8 +312,9 @@ function WildAIService.StartChase(player: Player, nest, token)
 			bonus, so a Nest Frenzy guardian that spawns during the event stays
 			slow for the whole chase rather than speeding up when it ends.
 		]]
-		BaseSpeed = ChaseConfig.SpeedFor(species and species.ChaseArchetype, thiefSpeed, zoneBonus)
-			* WildAIService.EventSpeedMultiplier,
+		BaseSpeed = tutorialCapped(player, thiefSpeed,
+			ChaseConfig.SpeedFor(species and species.ChaseArchetype, thiefSpeed, zoneBonus)
+				* WildAIService.EventSpeedMultiplier),
 		StartedAt = os.clock(),
 		--[[
 			Seeded to NOW, not to zero, so the first ability fires one full
