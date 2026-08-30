@@ -640,6 +640,41 @@ function HUDController.Flash(text: string, color: Color3?, duration: number?)
 end
 
 --[[
+	The three-line reveal panel: what it is, what it means, and the big number.
+
+	Used by hatches and by the offline-earnings summary, because both are the
+	same shape of moment - something happened, here is how much it was worth.
+]]
+function HUDController.ShowReveal(info)
+	if type(info) ~= "table" then
+		return
+	end
+
+	hatchToken += 1
+	local token = hatchToken
+
+	local color = info.Color or Theme.Color.Accent
+
+	hatchPanel.Visible = true
+	hatchPanel.Title.Text = info.Title or ""
+	hatchPanel.Title.TextColor3 = color
+	hatchPanel.Subtitle.Text = info.Subtitle or ""
+	hatchPanel.Odds.Text = info.Headline or ""
+	hatchPanel.Odds.TextColor3 = color
+
+	local stroke = hatchPanel:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+	end
+
+	task.delay(info.Duration or 3, function()
+		if hatchToken == token then
+			hatchPanel.Visible = false
+		end
+	end)
+end
+
+--[[
 	Shows a hatch result. `result` is the HatchResult payload.
 
 	Rarer hatches linger longer - a Common should not hold the screen as long as
@@ -650,16 +685,8 @@ function HUDController.ShowHatch(result)
 		return
 	end
 
-	hatchToken += 1
-	local token = hatchToken
-
-	local color = RarityConfig.GetColor(result.Rarity)
 	local tier = RarityConfig.Tiers[result.Rarity]
 	local rank = tier and tier.Rank or 1
-
-	hatchPanel.Visible = true
-	hatchPanel.Title.Text = string.upper(result.DisplayName or "?")
-	hatchPanel.Title.TextColor3 = color
 
 	local parts = { tier and string.upper(tier.DisplayName) or "?" }
 	if result.Mutation2 then
@@ -668,24 +695,16 @@ function HUDController.ShowHatch(result)
 	if result.IncomePerSec then
 		table.insert(parts, Format.Number(result.IncomePerSec) .. " Fossils/sec")
 	end
-	hatchPanel.Subtitle.Text = table.concat(parts, "  ·  ")
 
-	-- The mutation's odds beat the rarity's when there is one: a Galaxy
-	-- Compsognathus is a rarer event than the Compsognathus was.
-	hatchPanel.Odds.Text = result.MutationOdds or result.Odds or ""
-	hatchPanel.Odds.TextColor3 = color
-
-	local stroke = hatchPanel:FindFirstChildOfClass("UIStroke")
-	if stroke then
-		stroke.Color = color
-	end
-
-	local duration = 2.5 + math.min(rank, 9) * 0.4
-	task.delay(duration, function()
-		if hatchToken == token then
-			hatchPanel.Visible = false
-		end
-	end)
+	HUDController.ShowReveal({
+		Title = string.upper(result.DisplayName or "?"),
+		Subtitle = table.concat(parts, "  ·  "),
+		-- The mutation's odds beat the rarity's when there is one: a Galaxy
+		-- Compsognathus is a rarer event than the Compsognathus was.
+		Headline = result.MutationOdds or result.Odds or "",
+		Color = RarityConfig.GetColor(result.Rarity),
+		Duration = 2.5 + math.min(rank, 9) * 0.4,
+	})
 end
 
 function HUDController.SetCompass(text: string?)

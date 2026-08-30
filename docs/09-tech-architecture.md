@@ -37,6 +37,7 @@ ReplicatedStorage
     │   ├── Log                      (ModuleScript)  scoped, level-filtered logging
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
     │   ├── Patch                    (ModuleScript)  structural diff + apply (shared)
+    │   ├── Economy                  (ModuleScript)  income/sell/bank maths (shared)
     │   ├── AssetBuilder             (ModuleScript)  placeholder model generation
     │   ├── Signal                   (ModuleScript)  lightweight event class
     │   ├── RNG                      (ModuleScript)  weighted pick, luck maths
@@ -62,7 +63,7 @@ ServerScriptService
         ├── PlayerDataService        in-memory profile access + replication
         ├── SecurityService          rate limits, distance checks, movement sanity
         ├── EggService               pickup, rarity roll, carry tokens, loose eggs
-        ├── EconomyService           Fossils/DNA mutations, income ticking, offline
+        ├── EconomyService           Fossils/DNA, lazy banking, offline earnings
         ├── ParkService              plot assign/release, placement grid, defences
         │   └── PlotBuilder          procedural plot geometry
         ├── NestService              world blockout, nest spawn/respawn/claim
@@ -104,7 +105,7 @@ StarterPlayer
             ├── SoundController
             ├── AnimationController
             ├── EggCarryController   carry visuals, chase HUD
-            ├── ParkController       placement drag/drop, grid preview
+            ├── ParkController       income floaters, park-side visuals
             ├── ShopController
             ├── IndexController
             ├── QuestController

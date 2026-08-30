@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 11 of 24 complete.** All three reveals land. Awaiting the Studio Play test before Step 12.
+## Status: **Step 12 of 24 complete.** The park pays. Awaiting the Studio Play test before Step 13.
 
 ## Completed
 
@@ -22,6 +22,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 9** — guardian AI & the chase | 20 archetypes, zone difficulty curve, 274 more assertions |
 | 2026-08-30 | **Step 10** — safe zone & deposit | The loop closes: steal → chase → keep it. 31 more assertions |
 | 2026-08-30 | **Step 11** — incubation & hatching | Species + mutation rolls, incubator pads, 298 more assertions |
+| 2026-08-30 | **Step 12** — placement & income | Lazy bank, offline earnings, auto-placement, 57 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -38,7 +39,7 @@ accident. Updated at the end of every build step.
 | 9 | Guardian AI & the chase | ✅ **done** |
 | 10 | Safe zone & deposit | ✅ **done** |
 | 11 | Incubation & hatching | ✅ **done** |
-| 12 | Placement & income | ⬜ |
+| 12 | Placement & income | ✅ **done** |
 | 13 | Upgrades & shop | ⬜ |
 | 14 | Zones & teleports | ⬜ |
 | 15 | Player raiding | ⬜ |
@@ -79,6 +80,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Modules/RNG` | ModuleScript | `new/WeightedPick/ApplyLuck/ApplyModifiers/Chance/Shuffle/Pick/ProbabilityOf` |
 | `Modules/Net` | ModuleScript | Remote inventory, rate limits, arg validation |
 | `Modules/Patch` | ModuleScript | Structural diff + apply, shared by both sides of replication |
+| `Modules/Economy` | ModuleScript | Income, sell value, banking and offline maths. Pure; shared by both sides |
 | `Modules/AssetBuilder` | ModuleScript | Placeholder egg + dinosaur models; only fills what is missing |
 | `SAD_Assets/{Dinos,Eggs,Effects,UI}` | Folders | Empty until Step 7 |
 
@@ -111,6 +113,7 @@ rebuilds this on every server start.
 | `Services/MutationService` | ModuleScript | Mutation rolls, weather modifiers, MutLuck, the Prime rule |
 | `Services/DinosaurService` | ModuleScript | Species rolls, profile entries, income and sell value |
 | `Services/IncubationService` | ModuleScript | Incubator timers, physical pads, hatch resolution |
+| `Services/EconomyService` | ModuleScript | The lazy bank, collection, offline earnings, all currency movement |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -135,6 +138,40 @@ IncubationService.Hatched  Signal(player, uid, entry, odds)
 **Incubators are physical.** The pads built in Step 6 carry prompts that fill,
 count down, and say HATCH — FTUE beats 7 and 8 verbatim, and the reveal works
 before any menu exists.
+
+```
+Economy.IncomeOf(entry, data?) -> fossilsPerSecond    -- the master formula
+Economy.SellValueOf(entry) -> fossils, dna
+Economy.ParkIncomeRate(data) -> fossilsPerSecond      -- placed + vaulted only
+Economy.BankedNow(data, now, rate?) -> banked, rate, cap
+Economy.OfflineEarnings(data, now, rate?, offlineRate?) -> fossils, cappedSecs
+Economy.BankSeconds(data) -> seconds       -- 4h + 1h/rebirth, capped at 12h
+Economy.BankCap(data, rate?) -> fossils
+Economy.ClampFossils(amount) -> number
+Economy.ParkValue(data) -> fossils
+Economy.SlotCap(data) -> number
+Economy.MaxFossils / Economy.OfflineRate / Economy.StarBonusPerStar
+
+EconomyService.GetRate(player) -> fossilsPerSecond       -- cached
+EconomyService.GetBanked(player) -> banked, rate, cap
+EconomyService.Collect(player) -> collected
+EconomyService.InvalidateRate(player)
+EconomyService.AddFossils(player, amount, reason) -> newTotal
+EconomyService.TrySpendFossils(player, amount, reason) -> ok
+EconomyService.AddDna(player, amount, reason)
+EconomyService.Collected  Signal(player, amount)
+
+DinosaurService.Place(player, uid, tileX, tileZ) -> ok, reason?
+DinosaurService.PlaceBest(player) -> uid?, reason?
+DinosaurService.Store(player, uid) -> ok, reason?
+DinosaurService.FindFreeFootprint(data, size, exceptUid?) -> tileX?, tileZ?
+DinosaurService.DinoPlaced / DinoStored   Signals
+```
+
+**Nothing ticks.** The bank is `BankedFossils + rate × (now − BankedAt)`, capped,
+computed on read. The rate is the only O(dinos) part and it is cached, dropped
+whenever a park changes. `DataService.BeforeSave` folds the pending bank into
+`BankedFossils`, so a crash cannot lose accrued income.
 
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
@@ -249,6 +286,7 @@ client never hears about; there is no polling fallback by design.
 | `InputController` | ModuleScript | Keyboard/gamepad/touch → named actions |
 | `EggCarryController` | ModuleScript | Reads carry state off the world; carry panel and chase readout |
 | `CameraController` | ModuleScript | Camera shake, applied as an offset after Roblox's camera step |
+| `ParkController` | ModuleScript | Income floaters, computed locally from the replicated profile |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -324,11 +362,15 @@ current value, then on every change at or under that path. No polling anywhere.
 | 30 | docs/00's loop diagram amended: the chase resolves by **escape**, then you return home to bank | Measured: the 250-stud leash fires before the gate for ~92 % of park-to-zone angles. Guardians chasing across the map would be expensive and would make the leash dead code. The gate stays decisive for **player raids** | docs/00 §2, docs/03 §1.4 |
 | 31 | `IncubationService.BeginIncubation`, not `.Start` | Every service's `Start(app)` belongs to Bootstrap's lifecycle. One function cannot be both the lifecycle hook and the public API | — |
 | 32 | docs/05's worked income example corrected: **34,962** F/s, not 44,747 | It labelled its Feeding Trough multiplier "L8 (×2.1)", but §5 of the same document defines that track as +8 %/level — L8 is ×1.64 and ×2.1 would be L13. The example could not be reproduced from its own table, and its stated total was also 20 off its own arithmetic | docs/05 §2 |
+| 33 | Added `Economy` as shared module #11; `DinosaurService.IncomeOf`/`SellValueOf` now re-export it | Same reasoning as `Patch` (#10). The client draws income floaters locally from the replicated profile rather than receiving a packet per tick, so it must reach exactly the number the server banks. A second implementation of a six-term multiplication chain drifts the first time either gains a term. The old names still work, so nothing that called them had to change | docs/09 §1 |
+| 34 | A hatched dinosaur **auto-places** if a slot and a tile are free | Otherwise a new player's first hatch produces a park that looks identical and earns nothing until they find a placement menu that does not exist until Step 13. FTUE beat 8 promises visible income from the first hatch; auto-placement is what keeps that promise before there is any UI | docs/00 §3 |
+| 35 | The Collection Totem's single prompt **collects if anything is banked, otherwise places the best stored dinosaur** | One prompt is the whole park interface until Step 13. Two prompts on one totem, one of which is usually a no-op, is worse than one that always does the useful thing | docs/12 §2 |
+| 36 | `HUDController.ShowHatch` generalised to `ShowReveal(config)` | The offline-earnings summary is the same panel with different content. Two near-identical 90-line panel builders is where they drift apart | docs/08 §6 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 47 source files and runs **2,523
-assertions** outside Roblox. Last run: **2,523 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 50 source files and runs **2,580
+assertions** outside Roblox. Last run: **2,580 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -343,6 +385,7 @@ assertions** outside Roblox. Last run: **2,523 passed, 0 failed.**
 | `step9_spec` (274) | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
+| `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
 
 Bugs the specs caught before they shipped:
 
@@ -421,6 +464,20 @@ Bugs the specs caught before they shipped:
     authoritative — the spec now pins the example *and* the multiplier it
     depends on, so changing the track fails here rather than silently
     invalidating the doc.
+
+13. **docs/05's headline curve is not reachable by placing dinosaurs.** The
+    Step 12 spec started by checking only the *shape* of early income, which
+    passed while sitting four to five times under the published table. Pushing
+    the check to reproduce docs/05 §8's actual rows showed why: the 5-minute
+    and 20-minute rows come out of placement alone, but the 1-hour row (380
+    F/s from 10 dinosaurs) cannot — ten Rares are 300 F/s. It becomes
+    reachable at Feeding Trough L3, ×1.24, which costs about 10.8 K against
+    the 95 K that row says has been earned. So the table was right and its
+    framing was wrong: it describes a player who has been *spending*, which
+    its own "First upgrade" milestone at five minutes already implies. The
+    document now says so, and the spec pins all three rows plus the multiplier
+    they depend on. Worth recording because the first version of this check
+    would have passed forever without noticing.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

@@ -41,6 +41,7 @@ local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local MutationConfig = require(Shared.Config.MutationConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local Economy = require(Shared.Modules.Economy)
 local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
 local Net = require(Shared.Modules.Net)
@@ -291,6 +292,18 @@ function IncubationService.Claim(player: Player, slotIndex: number): (boolean, s
 		MutationOdds = mutationOdds,
 		IncomePerSec = DinosaurService.IncomeOf(entry, data),
 	})
+
+	--[[
+		Straight into the park when there is room.
+
+		A player two minutes into the game should not have to find a menu to
+		make their first dinosaur earn anything - and an empty park after a
+		successful run reads as the game not having worked. Step 13's Dinos
+		menu adds precise placement on top; this is the floor.
+	]]
+	if DinosaurService.GetPlacedCount(player) < Economy.SlotCap(data) then
+		DinosaurService.PlaceBest(player)
+	end
 
 	announce(player, entry, odds)
 	Log.info("IncubationService", "%s hatched %s (%s, %s)",

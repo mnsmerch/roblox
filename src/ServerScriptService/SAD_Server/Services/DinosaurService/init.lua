@@ -21,7 +21,14 @@
 		DinosaurService.GetStorageUsed(player) -> number
 		DinosaurService.GetStorageCap(player) -> number
 		DinosaurService.DisplayNameOf(entry) -> string
+		DinosaurService.Place(player, uid, tileX, tileZ) -> ok, reason?
+		DinosaurService.PlaceBest(player) -> uid?, reason?
+		DinosaurService.Store(player, uid) -> ok, reason?
+		DinosaurService.FindFreeFootprint(data, size) -> tileX?, tileZ?
+		DinosaurService.GetPlacedCount(player) -> number
 		DinosaurService.DinoCreated  Signal(player, uid, entry)
+		DinosaurService.DinoPlaced   Signal(player, uid, entry)
+		DinosaurService.DinoStored   Signal(player, uid, entry)
 
 	Depends on: DinoConfig, RarityConfig, MutationConfig, RebirthConfig,
 	            UpgradeConfig, PlayerDataService, RNG.
@@ -32,17 +39,22 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local DinoConfig = require(Shared.Config.DinoConfig)
+local ParkConfig = require(Shared.Config.ParkConfig)
 local MutationConfig = require(Shared.Config.MutationConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local Economy = require(Shared.Modules.Economy)
 local Log = require(Shared.Modules.Log)
+local Net = require(Shared.Modules.Net)
 local RNG = require(Shared.Modules.RNG)
 local Signal = require(Shared.Modules.Signal)
 
 local DinosaurService = {}
 
 DinosaurService.DinoCreated = Signal.new()
+DinosaurService.DinoPlaced = Signal.new()
+DinosaurService.DinoStored = Signal.new()
 
 local PlayerDataService
 local rng = RNG.new()
@@ -72,47 +84,13 @@ end
 -- ── Valuation ───────────────────────────────────────────────────────────────
 
 --[[
-	The master income formula from docs/05 §2.
-
-	Every multiplier in one place, in the documented order, so a number a player
-	sees can always be traced. `data` may be nil for a context-free valuation
-	(a preview, a trade window) - the player-specific terms then drop to 1.
+	Income and sell value live in SAD_Shared/Modules/Economy, because the client
+	computes income locally to draw floaters and the two sides must agree
+	exactly. Re-exported here so callers do not need to know which module owns
+	which half of the maths.
 ]]
-function DinosaurService.IncomeOf(entry, data): number
-	local tier = RarityConfig.Tiers[entry.Rarity]
-	local species = DinoConfig.Get(entry.SpeciesId)
-	if not tier or not species then
-		return 0
-	end
-
-	local income = tier.BaseIncome * species.SpeciesFactor
-	income *= MutationConfig.MultiplierFor(entry.Mutation, entry.Mutation2)
-
-	-- Stars 1-5, +35% each. Fusion raises them in V1.2.
-	income *= 1 + 0.35 * ((entry.Stars or 1) - 1)
-
-	if data then
-		income *= RebirthConfig.IncomeMultiplier(data.Rebirths)
-		income *= UpgradeConfig.EffectAt("feedingTrough", data.Upgrades.feedingTrough or 0)
-	end
-
-	return income
-end
-
---- Fossils and DNA from selling. Mutations raise sell value on a SQUARE ROOT,
---- so selling a Void dinosaur is lucrative but never better than keeping it.
-function DinosaurService.SellValueOf(entry): (number, number)
-	local tier = RarityConfig.Tiers[entry.Rarity]
-	if not tier then
-		return 0, 0
-	end
-
-	local starMult = 1 + 0.35 * ((entry.Stars or 1) - 1)
-	local mutationMult = math.sqrt(MutationConfig.MultiplierFor(entry.Mutation, entry.Mutation2))
-
-	return math.floor(tier.SellFossils * starMult * mutationMult),
-		math.floor(tier.SellDna * starMult * mutationMult)
-end
+DinosaurService.IncomeOf = Economy.IncomeOf
+DinosaurService.SellValueOf = Economy.SellValueOf
 
 --- "Void Golden Tyrannosaurus Rex". Rarer mutation first.
 function DinosaurService.DisplayNameOf(entry): string
@@ -149,6 +127,200 @@ function DinosaurService.GetStorageCap(player: Player): number
 		return 0
 	end
 	return UpgradeConfig.EffectAt("dinoStorage", data.Upgrades.dinoStorage or 0)
+end
+
+-- ── Placement ───────────────────────────────────────────────────────────────
+
+function DinosaurService.GetPlacedCount(player: Player): number
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return 0
+	end
+	local count = 0
+	for _, entry in data.Dinos do
+		if entry.Placed then
+			count += 1
+		end
+	end
+	return count
+end
+
+--- Which grid tiles are currently occupied, and by whom.
+local function occupancyOf(data, exceptUid: string?)
+	local occupied = {}
+	for uid, entry in data.Dinos do
+		if entry.Placed and entry.TileX and uid ~= exceptUid then
+			local species = DinoConfig.Get(entry.SpeciesId)
+			local tiles = species and ParkConfig.FootprintTiles(entry.TileX, entry.TileZ, species.Size)
+			for _, tile in tiles or {} do
+				occupied[tile[1] .. "," .. tile[2]] = uid
+			end
+		end
+	end
+	return occupied
+end
+
+--[[
+	First anchor where `size` fits without overlapping anything.
+
+	Scans back-to-front so the park fills from the far wall toward the gate,
+	which keeps the view from the entrance clear and puts the newest arrival
+	where a visitor sees it.
+]]
+function DinosaurService.FindFreeFootprint(data, size: string, exceptUid: string?): (number?, number?)
+	local occupied = occupancyOf(data, exceptUid)
+
+	for tileZ = 1, ParkConfig.GridTiles do
+		for tileX = 1, ParkConfig.GridTiles do
+			local tiles = ParkConfig.FootprintTiles(tileX, tileZ, size)
+			if tiles then
+				local clear = true
+				for _, tile in tiles do
+					if occupied[tile[1] .. "," .. tile[2]] then
+						clear = false
+						break
+					end
+				end
+				if clear then
+					return tileX, tileZ
+				end
+			end
+		end
+	end
+
+	return nil, nil
+end
+
+--[[
+	Places a dinosaur on the grid. Returns (ok, reason).
+
+	Three things can refuse it, and all three are the player's to fix: no free
+	slot, the footprint runs off the grid, or something is already there. None
+	of them changes any state.
+]]
+function DinosaurService.Place(player: Player, uid: string, tileX: number, tileZ: number): (boolean, string?)
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return false, "profile not loaded"
+	end
+
+	local entry = data.Dinos[uid]
+	if not entry then
+		return false, "no such dinosaur"
+	end
+	if entry.Placed then
+		return false, "already placed"
+	end
+	if entry.Vault then
+		return false, "vaulted"
+	end
+
+	if DinosaurService.GetPlacedCount(player) >= Economy.SlotCap(data) then
+		return false, "no free slots"
+	end
+
+	local species = DinoConfig.Get(entry.SpeciesId)
+	if not species then
+		return false, "unknown species"
+	end
+
+	local tiles = ParkConfig.FootprintTiles(tileX, tileZ, species.Size)
+	if not tiles then
+		return false, "does not fit on the grid"
+	end
+
+	local occupied = occupancyOf(data, uid)
+	for _, tile in tiles do
+		if occupied[tile[1] .. "," .. tile[2]] then
+			return false, "something is already there"
+		end
+	end
+
+	PlayerDataService.UpdateKeys(player, { "Dinos", "Stats" }, function(profile)
+		local target = profile.Dinos[uid]
+		target.Placed = true
+		target.TileX = tileX
+		target.TileZ = tileZ
+		profile.Stats.DinosPlaced += 1
+	end, "place")
+
+	DinosaurService.DinoPlaced:Fire(player, uid, entry)
+	return true, nil
+end
+
+--[[
+	Places the most valuable unplaced dinosaur wherever it fits.
+
+	This is what the Collection Totem's prompt calls, and what a hatch calls
+	when a slot is free. Best-first because a player who can only place one more
+	thing should be placing their Mythic, not whichever Compsognathus the
+	iteration happened to reach.
+]]
+function DinosaurService.PlaceBest(player: Player): (string?, string?)
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return nil, "profile not loaded"
+	end
+
+	if DinosaurService.GetPlacedCount(player) >= Economy.SlotCap(data) then
+		return nil, "no free slots"
+	end
+
+	local bestUid, bestIncome = nil, -1
+	for uid, entry in data.Dinos do
+		if not entry.Placed and not entry.Vault then
+			local income = Economy.IncomeOf(entry, data)
+			if income > bestIncome then
+				bestUid, bestIncome = uid, income
+			end
+		end
+	end
+
+	if not bestUid then
+		return nil, "nothing to place"
+	end
+
+	local species = DinoConfig.Get(data.Dinos[bestUid].SpeciesId)
+	local tileX, tileZ = DinosaurService.FindFreeFootprint(data, species.Size)
+	if not tileX then
+		return nil, "no room on the grid"
+	end
+
+	local ok, reason = DinosaurService.Place(player, bestUid, tileX, tileZ)
+	if not ok then
+		return nil, reason
+	end
+	return bestUid, nil
+end
+
+--- Returns a dinosaur to storage, freeing its slot and its tiles.
+function DinosaurService.Store(player: Player, uid: string): (boolean, string?)
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return false, "profile not loaded"
+	end
+
+	local entry = data.Dinos[uid]
+	if not entry then
+		return false, "no such dinosaur"
+	end
+	if not entry.Placed then
+		return false, "not placed"
+	end
+
+	if DinosaurService.GetStorageUsed(player) >= DinosaurService.GetStorageCap(player) then
+		return false, "storage full"
+	end
+
+	PlayerDataService.UpdateKeys(player, { "Dinos" }, function(profile)
+		local target = profile.Dinos[uid]
+		target.Placed = false
+		target.TileX = nil
+		target.TileZ = nil
+	end, "store")
+
+	DinosaurService.DinoStored:Fire(player, uid, entry)
+	return true, nil
 end
 
 -- ── Creation ────────────────────────────────────────────────────────────────
@@ -241,6 +413,14 @@ function DinosaurService.Init(app)
 end
 
 function DinosaurService.Start(app)
+	Net.OnEvent("RequestPlaceDino", function(player: Player, uid: string, tileX: number, tileZ: number)
+		DinosaurService.Place(player, uid, tileX, tileZ)
+	end)
+
+	Net.OnEvent("RequestStoreDino", function(player: Player, uid: string)
+		DinosaurService.Store(player, uid)
+	end)
+
 	Log.info("DinosaurService", "Ready. %d species available", DinoConfig.Count())
 end
 

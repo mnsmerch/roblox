@@ -30,6 +30,7 @@
 		ParkService.WorldToTile(plot, position) -> tileX?, tileZ?
 		ParkService.SetShieldVisible(plot, visible)
 		ParkService.SetVisualTier(plot, parkValue)
+		ParkService.RefreshDinos(player)
 
 		ParkService.PlotAssigned    Signal(player, plot)
 		ParkService.PlotReleased    Signal(player, plot)
@@ -45,8 +46,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
+local DinoConfig = require(Shared.Config.DinoConfig)
 local GameConfig = require(Shared.Config.GameConfig)
 local ParkConfig = require(Shared.Config.ParkConfig)
+local RarityConfig = require(Shared.Config.RarityConfig)
+local Economy = require(Shared.Modules.Economy)
+local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
 local Signal = require(Shared.Modules.Signal)
 
@@ -68,7 +73,17 @@ local plotOfPlayer: { [Player]: Model } = {}
 local occupancy: { [Player]: number? } = {}
 
 local PlayerDataService = nil
+local DinosaurService = nil
+local EconomyService = nil
 local worldFolder: Folder = nil
+local dinoFolder: Folder = nil
+local dinoAssets: Folder = nil
+
+--- [player] = { [dinoUid] = Model }
+local rendered: { [Player]: { [string]: Model } } = {}
+
+--- [player] = the Collection Totem's prompt
+local totemPrompts: { [Player]: ProximityPrompt } = {}
 
 --[[
 	Ring bounds for the cheap rejection test. A position outside this band
@@ -197,6 +212,205 @@ local function setSignText(plot: Model, text: string)
 	end
 end
 
+-- ── Rendering placed dinosaurs ──────────────────────────────────────────────
+
+--[[
+	Brings the models in the park in line with what the profile says.
+
+	Only touches what changed - a park with thirty dinosaurs re-renders one when
+	one is placed, not thirty. Called on assignment, on any placement change,
+	and never on a timer.
+]]
+function ParkService.RefreshDinos(player: Player)
+	local plot = plotOfPlayer[player]
+	local data = PlayerDataService.Get(player)
+	if not plot or not data then
+		return
+	end
+
+	local existing = rendered[player]
+	if not existing then
+		existing = {}
+		rendered[player] = existing
+	end
+
+	local wanted = {}
+
+	for uid, entry in data.Dinos do
+		if not entry.Placed or not entry.TileX then
+			continue
+		end
+		wanted[uid] = true
+
+		if existing[uid] then
+			continue
+		end
+
+		local species = DinoConfig.Get(entry.SpeciesId)
+		local template = species and dinoAssets:FindFirstChild(species.ModelName)
+		if not template then
+			continue
+		end
+
+		local model = template:Clone()
+		model.Name = "ParkDino_" .. uid
+
+		for _, descendant in model:GetDescendants() do
+			if descendant:IsA("BasePart") then
+				descendant.Anchored = true
+				descendant.CanCollide = false
+				descendant.CastShadow = false
+			end
+		end
+
+		local cframe = ParkService.GetTileCFrame(plot, entry.TileX, entry.TileZ, species.Size)
+		-- Face the gate, so a visitor walking in is looked at.
+		model:PivotTo(cframe * CFrame.Angles(0, math.pi, 0))
+
+		model:SetAttribute("DinoUid", uid)
+		model:SetAttribute("OwnerUserId", player.UserId)
+		model:SetAttribute("Rarity", entry.Rarity)
+		if entry.Mutation then
+			model:SetAttribute("Mutation", entry.Mutation)
+		end
+
+		-- Rare dinosaurs are meant to be visible from across the map
+		-- (docs/01 §1). A light is the cheapest thing that carries at range.
+		local tier = RarityConfig.Tiers[entry.Rarity]
+		if tier and tier.Rank >= 4 then
+			local light = Instance.new("PointLight")
+			light.Color = RarityConfig.GetColor(entry.Rarity)
+			light.Brightness = 3
+			light.Range = 30
+			light.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+		end
+
+		local nameTag = Instance.new("BillboardGui")
+		nameTag.Name = "NameTag"
+		nameTag.Size = UDim2.fromScale(12, 2.4)
+		nameTag.StudsOffsetWorldSpace = Vector3.new(0, 8, 0)
+		nameTag.MaxDistance = 160
+		nameTag.Adornee = model.PrimaryPart
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.fromScale(1, 1)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.FredokaOne
+		label.TextScaled = true
+		label.TextStrokeTransparency = 0.4
+		label.TextColor3 = RarityConfig.GetColor(entry.Rarity)
+		label.Text = DinosaurService.DisplayNameOf(entry)
+		label.Parent = nameTag
+		nameTag.Parent = model.PrimaryPart
+
+		model.Parent = dinoFolder
+		existing[uid] = model
+	end
+
+	-- Anything no longer placed goes away.
+	for uid, model in existing do
+		if not wanted[uid] then
+			model:Destroy()
+			existing[uid] = nil
+		end
+	end
+end
+
+local function clearDinos(player: Player)
+	local existing = rendered[player]
+	if existing then
+		for _, model in existing do
+			model:Destroy()
+		end
+	end
+	rendered[player] = nil
+end
+
+-- ── The Collection Totem ────────────────────────────────────────────────────
+
+--[[
+	One prompt does both jobs: collect what is banked, or place a dinosaur if
+	there is nothing to collect.
+
+	Two prompts on one object is worse than one that reads the situation, and
+	until Step 13 builds the Dinos menu this is the only way to place anything.
+]]
+local function refreshTotem(player: Player)
+	local prompt = totemPrompts[player]
+	if not prompt then
+		return
+	end
+
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return
+	end
+
+	local banked = EconomyService.GetBanked(player)
+
+	if banked >= 1 then
+		prompt.Enabled = true
+		prompt.ActionText = "Collect"
+		prompt.ObjectText = Format.Number(banked) .. " Fossils"
+		return
+	end
+
+	local unplaced = 0
+	for _, entry in data.Dinos do
+		if not entry.Placed and not entry.Vault then
+			unplaced += 1
+		end
+	end
+
+	if unplaced > 0 and DinosaurService.GetPlacedCount(player) < Economy.SlotCap(data) then
+		prompt.Enabled = true
+		prompt.ActionText = "Place Dinosaur"
+		prompt.ObjectText = unplaced .. " in storage"
+	else
+		prompt.Enabled = false
+		prompt.ActionText = "Collect"
+		prompt.ObjectText = "Nothing banked"
+	end
+end
+
+ParkService.RefreshTotem = refreshTotem
+
+local function bindTotem(player: Player, plot: Model)
+	local totem = plot:FindFirstChild("CollectionTotem")
+	if not totem then
+		return
+	end
+
+	local existing = totem:FindFirstChildOfClass("ProximityPrompt")
+	if existing then
+		existing:Destroy()
+	end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "TotemPrompt"
+	prompt.ActionText = "Collect"
+	prompt.ObjectText = "Collection Totem"
+	prompt.HoldDuration = 0
+	prompt.MaxActivationDistance = 14
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = totem
+
+	prompt.Triggered:Connect(function(triggerer: Player)
+		-- Your own totem only. A visitor is a visitor.
+		if triggerer ~= player then
+			return
+		end
+
+		if EconomyService.Collect(player) <= 0 then
+			DinosaurService.PlaceBest(player)
+		end
+		refreshTotem(player)
+	end)
+
+	totemPrompts[player] = prompt
+	refreshTotem(player)
+end
+
 -- ── Assignment ──────────────────────────────────────────────────────────────
 
 --[[
@@ -230,6 +444,9 @@ local function releasePlot(player: Player)
 	setSignText(plot, "Empty Plot")
 	ParkService.SetShieldVisible(plot, false)
 	ParkService.SetVisualTier(plot, 0)
+
+	clearDinos(player)
+	totemPrompts[player] = nil
 
 	plotOfPlayer[player] = nil
 	byUserId[player.UserId] = nil
@@ -302,6 +519,9 @@ local function onProfileLoaded(player: Player, data)
 		end
 	end
 
+	bindTotem(player, plot)
+	ParkService.RefreshDinos(player)
+
 	Log.info("ParkService", "Assigned %s to %s", player.Name, plot.Name)
 	ParkService.PlotAssigned:Fire(player, plot)
 end
@@ -348,6 +568,10 @@ end
 
 function ParkService.Init(app)
 	PlayerDataService = app.Get("PlayerDataService")
+	DinosaurService = app.Get("DinosaurService")
+	EconomyService = app.Get("EconomyService")
+
+	dinoAssets = Shared:WaitForChild("SAD_Assets"):WaitForChild("Dinos")
 
 	--[[
 		Characters are spawned by hand, once a plot is assigned. Otherwise a
@@ -413,6 +637,46 @@ function ParkService.Start(app)
 			local ok, err = pcall(sampleOccupancy)
 			if not ok then
 				Log.error("ParkService", "Occupancy sampling failed: %s", tostring(err))
+			end
+		end
+	end)
+
+	local runtime = Workspace:WaitForChild("SAD_Runtime")
+	dinoFolder = runtime:WaitForChild("ParkDinos")
+
+	--[[
+		Placement changes re-render one dinosaur, not thirty, and re-evaluate
+		the park's free visual tier - the retexture a returning player notices
+		without having bought anything (docs/02 §3).
+	]]
+	local function onParkChanged(player: Player)
+		ParkService.RefreshDinos(player)
+		refreshTotem(player)
+
+		local plot = plotOfPlayer[player]
+		local data = PlayerDataService.Get(player)
+		if plot and data then
+			ParkService.SetVisualTier(plot, Economy.ParkValue(data))
+		end
+	end
+
+	DinosaurService.DinoPlaced:Connect(onParkChanged)
+	DinosaurService.DinoStored:Connect(onParkChanged)
+	DinosaurService.DinoCreated:Connect(onParkChanged)
+
+	--[[
+		One shared loop keeps every totem's readout current. 1 Hz across at
+		most 24 players is nothing, and without it a totem shows a stale figure
+		until the player next touches it.
+	]]
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			for player in totemPrompts do
+				local ok, err = pcall(refreshTotem, player)
+				if not ok then
+					Log.error("ParkService", "Totem refresh failed for %s: %s", player.Name, tostring(err))
+				end
 			end
 		end
 	end)

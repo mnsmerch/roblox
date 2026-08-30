@@ -53,6 +53,16 @@ _shared.Modules.Format = Format
 _shared.Modules.Log = { debug = function() end, info = function() end, warn = function() end, error = function() end }
 _shared.Modules.Net = { OnEvent = function() end, FireClient = function() end, FireAllClients = function() end }
 
+-- DinosaurService reads placement geometry and delegates its money maths to
+-- the shared Economy module, so both have to be in the shim before it loads.
+--@INJECT ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua@
+
+_shared.Config.ParkConfig = ParkConfig
+
+--@INJECT Economy=src/ReplicatedStorage/SAD_Shared/Modules/Economy.lua@
+
+_shared.Modules.Economy = Economy
+
 --@INJECT MutationService=src/ServerScriptService/SAD_Server/Services/MutationService/init.lua DinosaurService=src/ServerScriptService/SAD_Server/Services/DinosaurService/init.lua@
 
 local passed, failed = 0, 0

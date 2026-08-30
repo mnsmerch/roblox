@@ -254,6 +254,14 @@ Modelled for an *active* player (≈ 12 eggs/hour in early zones, falling to
 | 1 week | 9 | 30 | 14 B | 62 T | Rebirth 11, first Ancient |
 | 1 month | 10 | 36 | 9 × 10¹⁵ | ~10¹⁹ | Rebirth 20+, Secret hunting |
 
+> **The rows assume the player is spending.** Ten Rares placed is 300 F/s, not
+> the 380 the 1-hour row prints — that row is reached at Feeding Trough L3
+> (×1.24), which costs about 10.8 K against the 95 K the same row says has been
+> earned. The curve below is what an active player who buys upgrades gets, not
+> a floor for one who only places dinosaurs. `tests/step12_spec.lua` asserts
+> each row is reachable, so changing the Feeding Trough track fails there
+> rather than quietly invalidating this table.
+
 **Growth rate:** roughly **×3.5 income per hour** in the first 6 hours, easing
 to **×2.2 per hour** by day 2, and **×1.35 per hour** by week 2. Fast enough to
 feel explosive on day one; slow enough that week-one players still have a

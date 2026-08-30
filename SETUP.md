@@ -349,6 +349,27 @@ All three services are ModuleScripts with no children.
 
 ---
 
+## Step 12 — placement and income
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Modules/Economy` | `src/ReplicatedStorage/SAD_Shared/Modules/Economy.lua` *(new)* |
+| `Services/EconomyService` | `src/.../Services/EconomyService/init.lua` *(new)* |
+| `Services/DinosaurService` | *(re-paste — place/store/sell)* |
+| `Services/ParkService` | *(re-paste — dinosaur rendering, totem)* |
+| `Services/IncubationService` | *(re-paste — auto-place on hatch)* |
+| `SAD_Client/Controllers/ParkController` | `src/.../Controllers/ParkController.lua` *(new)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — `ShowReveal`, offline summary)* |
+| `SAD_Client/Controllers/EggCarryController` | *(re-paste — reveal call sites)* |
+
+`Economy` is a ModuleScript beside `Patch` in `SAD_Shared/Modules`. It must be
+installed **before** `EconomyService`, `DinosaurService` and `ParkController`,
+all three of which require it. `EconomyService` is a Folder named
+`EconomyService` containing a ModuleScript named `init` — the same shape as
+`DataService` and `ParkService`.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1227,9 +1248,106 @@ the "I misclicked and sold my Titan" support ticket.
 
 ---
 
+## Step 12 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][EconomyService] Ready. Bank is lazy; auto-collect unlocks at rebirth 2
+[SAD/S][Boot] Loaded 11 service(s): ...
+[SAD/C][Boot] Loaded 7 controller(s): ...
+```
+
+**2. The loop now pays.** Steal an egg, bank it, hatch it. The dinosaur
+**places itself** on the first free tile — you should see it appear in your park
+with a name tag over it, and a small `+2 F` floater start drifting up off it
+every couple of seconds. Nothing was clicked to make that happen; that is
+deliberate, so a new player's first hatch produces visible income before they
+have found any menu.
+
+**3. The totem is the only button.** Walk to the Collection Totem at the front
+of your plot. Its prompt reads **Collect 47 F** when there is anything banked,
+and **Place Dinosaur** when there is not and you have one in storage. Hold it —
+Fossils jump in the top bar and the bank resets to zero.
+
+**4. The bank is lazy, and that is testable.** In the command bar:
+
+```lua
+local Econ = require(game.ServerScriptService.SAD_Server.Services.EconomyService)
+local p = game.Players:GetPlayers()[1]
+print(Econ.GetBanked(p))   -- banked, rate, cap
+task.wait(10)
+print(Econ.GetBanked(p))   -- banked has grown by rate * 10
+```
+
+Nothing ticks between those two prints. The second number is computed from
+`BankedAt`, not accumulated — which is why 30 players cost the same as 1.
+
+**5. The cap is real.** Leave a park earning for longer than
+`4h + 1h per rebirth` of accrual and the banked figure stops. Force it:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+PDS.Update(p, function(d) d.BankedAt = os.time() - 86400 end, "test")
+print(Econ.GetBanked(p))   -- banked == cap exactly, not a day's worth
+```
+
+**6. Offline income.** With a placed dinosaur, press **Stop**, wait two minutes
+in real time, then **Play**. A summary panel appears: time away, the rate it was
+earning at, the 60 % offline rate applied, and a Collect button. The figure must
+match `rate × secondsAway × 0.60`, capped.
+
+**7. Placement refuses cleanly.** Fill the grid:
+
+```lua
+PDS.Update(p, function(d)
+    for i = 1, 40 do
+        d.Dinos["filler" .. i] = { SpeciesId = "compsognathus", Rarity = "common", Stars = 1, Placed = false }
+    end
+end, "test")
+local Dino = require(game.ServerScriptService.SAD_Server.Services.DinosaurService)
+for _ = 1, 40 do print(Dino.PlaceBest(p)) end
+```
+
+Expect placements until the grid or the slot cap runs out, then a clean
+`no room on the grid` / `no free slots` reason — never an overlap, never a dinosaur
+rendered on top of another.
+
+**8. Income matches on both sides.** The floaters are computed on the client
+from the replicated profile using the *same* `Economy.IncomeOf` the server
+banks with. Compare:
+
+```lua
+-- server
+print(Econ.GetRate(p))
+```
+```lua
+-- client console (F9)
+local Econ = require(game.ReplicatedStorage.SAD_Shared.Modules.Economy)
+local State = require(game.Players.LocalPlayer.PlayerScripts.SAD_Client.Controllers.StateController)
+print(Econ.ParkIncomeRate(State.Get()))
+```
+
+These must print the same number. If they diverge, the client is reading a
+field the replication allowlist withholds — that is a replication bug, not a
+maths bug.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Floaters but the bank never grows | `EconomyService.InvalidateRate` not firing on `DinoPlaced` — the cached rate is stale at 0 |
+| Bank resets on rejoin | `BeforeSave` not folding the pending bank into `BankedFossils` |
+| Dinosaurs overlap | `FindFreeFootprint` called with the wrong size, or `Placed`/`TileX` written without going through `Place` |
+| Totem prompt does nothing | Nothing banked *and* nothing in storage — that is the correct no-op |
+| Offline summary shows a huge number | Cap not applied; check `RebirthConfig` offline-cap track |
+| Client and server rates differ | A replication allowlist gap, see test 8 |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,523 assertions** without Studio:
+Syntax-checks every source file and runs **2,580 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1250,6 +1368,7 @@ Fetches the Luau CLI on first run.
 | `tests/step9_spec.lua` | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 | `tests/step10_spec.lua` | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `tests/step11_spec.lua` | Mutation distributions against their published weights, Prime pairing rules and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, and the incubation ladder |
+| `tests/step12_spec.lua` | Footprint occupancy under a packed grid, the banking formula against its own cap, offline earnings at every rebirth, slot caps, and the day-one income curve against docs/05 |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

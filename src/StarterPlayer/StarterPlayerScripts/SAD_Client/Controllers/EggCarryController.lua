@@ -301,10 +301,20 @@ function EggCarryController.Start(app)
 	end)
 
 	Net.On("Notify", function(payload)
-		if type(payload) ~= "table" or not payload.Text then
+		if type(payload) ~= "table" then
 			return
 		end
-		HUDController.Flash(payload.Text, payload.Color, payload.Duration)
+
+		-- The offline summary is a reveal, not a toast: it is the first thing a
+		-- returning player sees and it deserves the same treatment as a hatch.
+		if payload.Kind == "reveal" then
+			HUDController.ShowReveal(payload)
+			return
+		end
+
+		if payload.Text then
+			HUDController.Flash(payload.Text, payload.Color, payload.Duration)
+		end
 	end)
 
 	-- Only the distance readouts need refreshing; carry contents and chase
