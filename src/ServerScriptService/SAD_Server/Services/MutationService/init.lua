@@ -44,6 +44,7 @@ local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 local Log = require(Shared.Modules.Log)
 local RNG = require(Shared.Modules.RNG)
+local Stats = require(Shared.Modules.Stats)
 
 local MutationService = {}
 
@@ -75,12 +76,8 @@ end
 	Zone 8 radiation field (1.6). Listed so nobody has to go looking.
 ]]
 function MutationService.MutLuckFrom(data): number
-	local luck = 0
-	luck += UpgradeConfig.EffectAt("incubatorGenetics", data.Upgrades.incubatorGenetics or 0)
-	luck += RebirthConfig.MutLuckBonus(data.Rebirths)
-
-	-- docs/04 §1.2 caps MutLuck at 4.0.
-	return math.clamp(luck, 0, 4.0)
+	-- Stats owns the composition and the docs/04 §1.2 cap of 4.0.
+	return Stats.MutLuck(data)
 end
 
 function MutationService.ComputeMutLuck(player: Player): number

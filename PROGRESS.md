@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 12 of 24 complete.** The park pays. Awaiting the Studio Play test before Step 13.
+## Status: **Step 13 of 24 complete.** The Fossil sink opens. Awaiting the Studio Play test before Step 14.
 
 ## Completed
 
@@ -23,6 +23,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 10** — safe zone & deposit | The loop closes: steal → chase → keep it. 31 more assertions |
 | 2026-08-30 | **Step 11** — incubation & hatching | Species + mutation rolls, incubator pads, 298 more assertions |
 | 2026-08-30 | **Step 12** — placement & income | Lazy bank, offline earnings, auto-placement, 57 more assertions |
+| 2026-08-30 | **Step 13** — upgrades & the shop | 14 tracks, shared `Stats`, three boards, 106 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -40,7 +41,7 @@ accident. Updated at the end of every build step.
 | 10 | Safe zone & deposit | ✅ **done** |
 | 11 | Incubation & hatching | ✅ **done** |
 | 12 | Placement & income | ✅ **done** |
-| 13 | Upgrades & shop | ⬜ |
+| 13 | Upgrades & shop | ✅ **done** |
 | 14 | Zones & teleports | ⬜ |
 | 15 | Player raiding | ⬜ |
 | 16 | Notifications & announcements | ⬜ |
@@ -81,6 +82,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Modules/Net` | ModuleScript | Remote inventory, rate limits, arg validation |
 | `Modules/Patch` | ModuleScript | Structural diff + apply, shared by both sides of replication |
 | `Modules/Economy` | ModuleScript | Income, sell value, banking and offline maths. Pure; shared by both sides |
+| `Modules/Stats` | ModuleScript | Every derived player number: upgrades + rebirth grants + caps. Pure |
 | `Modules/AssetBuilder` | ModuleScript | Placeholder egg + dinosaur models; only fills what is missing |
 | `SAD_Assets/{Dinos,Eggs,Effects,UI}` | Folders | Empty until Step 7 |
 
@@ -114,6 +116,7 @@ rebuilds this on every server start.
 | `Services/DinosaurService` | ModuleScript | Species rolls, profile entries, income and sell value |
 | `Services/IncubationService` | ModuleScript | Incubator timers, physical pads, hatch resolution |
 | `Services/EconomyService` | ModuleScript | The lazy bank, collection, offline earnings, all currency movement |
+| `Services/UpgradeService` | ModuleScript | Pricing, Buy and Buy Max in one transaction, live effect application |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -168,10 +171,45 @@ DinosaurService.FindFreeFootprint(data, size, exceptUid?) -> tileX?, tileZ?
 DinosaurService.DinoPlaced / DinoStored   Signals
 ```
 
-**Nothing ticks.** The bank is `BankedFossils + rate × (now − BankedAt)`, capped,
-computed on read. The rate is the only O(dinos) part and it is cached, dropped
-whenever a park changes. `DataService.BeforeSave` folds the pending bank into
-`BankedFossils`, so a crash cannot lose accrued income.
+**Nothing ticks.** The bank is `BankedFossils + BankedRate × (now − BankedAt)`,
+capped, computed on read. The rate is the only O(dinos) part and it is cached,
+dropped whenever a park changes. `DataService.BeforeSave` folds the pending bank
+into `BankedFossils`, so a crash cannot lose accrued income.
+
+**`BankedRate` is not a cache.** It is the rate the *current interval* accrues
+at, frozen when the interval opened, and it lives in the profile. Anything that
+changes a park's output must call `EconomyService.SettleBank` first — see
+finding 13 below for what happens otherwise.
+
+```
+Stats.Of(data) -> { DinoSlots, DinoStorage, Incubators, IncubationMult,
+                    ParkIncomeMult, BankSecs, Luck, MutLuck, MoveSpeedMult,
+                    CarryPenaltyMult, EggCapacity, StealHoldBonus,
+                    TowerCooldown, AlertRange }
+Stats.<Field>(data) -> number       -- one field, no allocation; same expression
+Stats.KindToField                   -- Effect.Kind -> field; ConfigValidator R9
+Stats.AssertComplete() -> ok, reason?
+
+UpgradeConfig.StoreFor(trackId) -> "Upgrades" | "Defences"
+UpgradeConfig.LevelIn(data, trackId) -> level
+UpgradeConfig.CostOf(trackId, level) -> fossils      -- 0 means not purchasable
+UpgradeConfig.CostRange(trackId, from, to) -> fossils
+
+UpgradeService.LevelOf(data, trackId) -> level
+UpgradeService.Affordable(data, trackId, wanted) -> levels, cost
+UpgradeService.Buy(player, trackId, wanted) -> bought, spent, reason?
+UpgradeService.ApplyLiveEffect(player, trackId)
+UpgradeService.Purchased  Signal(player, trackId, newLevel, spent)
+
+EconomyService.SettleBank(player)   -- closes the interval at the OLD rate
+```
+
+**Eleven call sites became one module.** Before Step 13, six files each wrote
+their own `UpgradeConfig.EffectAt(track, data.Upgrades[track] or 0)`, and the
+ones that also had a rebirth grant or a cap folded it in locally. `Stats` owns
+all of it; the old public functions (`EggService.LuckFrom`,
+`MutationService.MutLuckFrom`, `DinosaurService.GetStorageCap`,
+`Economy.SlotCap`, `Economy.BankSeconds`) kept their names and delegate.
 
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
@@ -287,6 +325,7 @@ client never hears about; there is no polling fallback by design.
 | `EggCarryController` | ModuleScript | Reads carry state off the world; carry panel and chase readout |
 | `CameraController` | ModuleScript | Camera shake, applied as an offset after Roblox's camera step |
 | `ParkController` | ModuleScript | Income floaters, computed locally from the replicated profile |
+| `ShopController` | ModuleScript | The three upgrade boards; prices rendered, never sent |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -366,11 +405,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 34 | A hatched dinosaur **auto-places** if a slot and a tile are free | Otherwise a new player's first hatch produces a park that looks identical and earns nothing until they find a placement menu that does not exist until Step 13. FTUE beat 8 promises visible income from the first hatch; auto-placement is what keeps that promise before there is any UI | docs/00 §3 |
 | 35 | The Collection Totem's single prompt **collects if anything is banked, otherwise places the best stored dinosaur** | One prompt is the whole park interface until Step 13. Two prompts on one totem, one of which is usually a no-op, is worse than one that always does the useful thing | docs/12 §2 |
 | 36 | `HUDController.ShowHatch` generalised to `ShowReveal(config)` | The offline-earnings summary is the same panel with different content. Two near-identical 90-line panel builders is where they drift apart | docs/08 §6 |
+| 37 | Added `Stats` as shared module #12; eleven `EffectAt` call sites now read it | docs/13 asks for a "PlayerStats aggregation" and docs/11 §5 says each `Effect.Kind` is read into it. Six files were each doing their own version, and the ones with a rebirth grant or a cap folded it in locally — eleven places to forget the cap the twelfth time, failing silently as a stat that is wrong in one system only. Shared rather than server-only because the shop draws "now → next" on the client and it has to be the number the player actually gets | docs/09 §1, docs/11 §5 |
+| 38 | Added `Profile.BankedRate` (schema field, no migration) | The bank pays for seconds that have already elapsed, so it must pay for them at the rate in force while they elapsed. Without it, any rate change pays retroactively — see finding 13. Added to `ProfileTemplate` rather than through a migration because docs/10 §3's own rule is that a new field with a sensible default is Reconcile's job, not a migration's. Withheld from replication: the client renders the *live* rate, which it derives from its own dinosaurs | docs/10 §1 |
+| 39 | Rebirth costs rounded to 3 significant figures, like every other price | `250000 × 5.2^n` gives `6760000.000000001` at rebirth 3 and `182790400` at rebirth 5. A price is a thing a player reads and a thing a comparison is made against: unrounded, it renders with a tail of digits and a player holding exactly 6,760,000 cannot afford a 6,760,000 rebirth. Rebirth 5 moves 182,790,400 → 183,000,000 | docs/05 §6 |
+| 40 | Added `GameConfig.LuckPerNode` (0.005) | It was an unnamed `0.005` inline in `EggService`. `Stats` folds it and the shop previews it, so it needed a name in the one place both can see | docs/10 §1 |
+| 41 | The Bone Market and the gate defence board are built in world geometry | docs/02 §1.1 deferred the Bone Market to "the systems that need it"; this is that system. Both carry a `ShopBoard` attribute the client reads straight off the prompt — opening a menu is not a server concern, so there is no remote for it, and the purchase remotes validate the board independently anyway | docs/02 §1.1, docs/06 §5 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 50 source files and runs **2,580
-assertions** outside Roblox. Last run: **2,580 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 53 source files and runs **2,686
+assertions** outside Roblox. Last run: **2,686 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -386,6 +430,7 @@ assertions** outside Roblox. Last run: **2,580 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step13_spec` (100) | Every price in the game against integrality, monotonicity and determinism; all 14 published max effects; `Stats.Of` against every single-field helper on three profiles; the Upgrades/Defences split asserted in both directions; Buy Max bounds and the never-negative rule; the retroactive-income guard; and docs/05 §5's 180-second constraint measured across a rebirth run |
 
 Bugs the specs caught before they shipped:
 
@@ -478,6 +523,66 @@ Bugs the specs caught before they shipped:
     document now says so, and the spec pins all three rows plus the multiplier
     they depend on. Worth recording because the first version of this check
     would have passed forever without noticing.
+
+14. **The bank could be made to pay retroactively — a money printer.** The
+    lazy bank computed `BankedFossils + rate × (now − BankedAt)` using the
+    rate *at the moment of reading*. So a player could idle with a weak park
+    for a full bank period, place their best dinosaur, and have the entire
+    idle window instantly re-pay at the new rate: a full bank, for free, and
+    repeatable by storing and re-placing. Buying Feeding Trough did the same
+    thing without even needing a dinosaur.
+
+    Found while building Step 13, because buying an income upgrade is a rate
+    change and the step could not be correct without answering it. The fix is
+    a schema field: `BankedRate` is frozen when the interval opens, accrual
+    uses it, and `EconomyService.SettleBank` closes the interval at the old
+    rate before anything changes it. The mirror case is fixed too — the cap
+    now bounds *accrual* rather than the stored balance, so storing a dinosaur
+    shrinks the cap without confiscating money already banked.
+
+15. **The three defence tracks would have read as level 0 forever.** docs/10 §1
+    puts them in `data.Defences`; every other track is in `data.Upgrades`. The
+    first draft of `Stats` read `data.Upgrades` for all fourteen. A bought
+    Fence would have applied nothing at all, silently, and nobody would have
+    found out until someone raided a park in Step 15. `UpgradeConfig.StoreFor`
+    now owns the answer, and the spec asserts it in both directions — that a
+    level in `Defences` counts, and that one misfiled into `Upgrades` does not.
+
+16. **docs/05 §5's hard constraint, measured.** "At every point in the curve,
+    the cheapest un-maxed upgrade costs less than 180 seconds of the player's
+    current income."
+
+    My first model said it failed badly — 37 of 160 purchases over the limit,
+    worst case a 64-minute wait. That model was wrong: it ignored rebirth,
+    and `Upgrades` and `Defences` are both absent from
+    `RebirthConfig.Preserved`, so the tree resets on every rebirth. A run is
+    the only window in which "the cheapest un-maxed upgrade" means anything.
+
+    Re-measured to the published Rebirth 1 at three hours: **the constraint
+    holds for the whole FTUE window (88 levels, worst wait 148 s, zero
+    breaches), and for 115 of 116 purchases across a full run.** The single
+    exception is Feeding Trough L13 at 2 h 51 m — 874,000 Fossils against
+    ~4,700/sec, so 185 s against a target of 180. A 3 % overshoot, at the last
+    purchase before the player rebirths anyway.
+
+    Left as-is and written up rather than silently retuned: dropping that
+    track's growth from 1.66 to 1.65 closes it, at the cost of a slightly
+    cheaper income multiplier, and that trade is a design call rather than a
+    test to be edited. The spec asserts "at most one breach, and under 189 s",
+    so a content change that makes it materially worse fails loudly.
+
+    The same measurement produced the number that explains why rebirth exists:
+    **maxing every track in the game costs 1.67 B Fossils, while rebirth 1
+    costs 250 K.** The upgrade tree is deliberately two thousand times cheaper
+    than the first reset, which is what makes the reset the real sink.
+
+17. **Rebirth costs were floats.** `250000 × 5.2^n` gives
+    `6760000.000000001` at rebirth 3. Upgrade prices go through
+    `RoundSignificant`; rebirth prices did not, so they would have rendered
+    with a tail of digits and a player holding exactly 6,760,000 Fossils would
+    have been told they could not afford a 6,760,000 rebirth. Now rounded the
+    same way, and asserted as exact whole numbers rather than "near" — which
+    is what caught it, since step3_spec had pinned the raw float.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

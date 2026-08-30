@@ -70,6 +70,9 @@ _shared.Modules.Log = { debug = function() end, info = function() end, warn = fu
 _shared.Modules.Net = { OnEvent = function() end }
 _shared.SAD_Assets = { WaitForChild = function() return {} end }
 
+--@INJECT Stats=src/ReplicatedStorage/SAD_Shared/Modules/Stats.lua@
+_shared.Modules.Stats = Stats
+
 --@INJECT EggService=src/ServerScriptService/SAD_Server/Services/EggService/init.lua@
 
 local passed, failed = 0, 0

@@ -108,6 +108,12 @@ Three boards in the hub so the list is never one intimidating column:
 Each row shows current level, effect now → effect after, cost, and a
 **"Buy Max"** button (server validates the whole batch in one transaction).
 
+> **Shipping in V1: 14 of the 18 above.** Park Size, Nest Radar, Alarm Horn and
+> Electric Fence are deferred — the first two depend on systems V1 does not
+> have (a resizable grid, a minimap), and the last two are the V1.4 defence
+> pass noted in docs/03 §5. `UpgradeConfig` is authoritative for what exists;
+> `tests/step13_spec.lua` asserts every shipped track is on exactly one board.
+
 ---
 
 ## 6. Trading — my recommendation: **ship it in V1.5, not V1**

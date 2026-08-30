@@ -482,6 +482,13 @@ function ConfigValidator.RunDefault()
 		Dino = require(parent.DinoConfig),
 		Zone = require(parent.ZoneConfig),
 		Upgrade = require(parent.UpgradeConfig),
+		--[[
+			Rule 9's handler hook, reserved since Step 3 and filled in at Step
+			13. Stats.KindToField IS the handler table: a track whose
+			Effect.Kind is not in it computes nothing, so the player buys an
+			upgrade that does exactly nothing and nothing throws.
+		]]
+		UpgradeHandlers = require(parent.Parent.Modules.Stats).KindToField,
 		Assets = assets,
 		Event = optional("EventConfig"),
 		Product = optional("ProductConfig"),

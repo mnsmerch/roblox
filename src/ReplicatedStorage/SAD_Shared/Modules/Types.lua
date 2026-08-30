@@ -174,6 +174,7 @@ export type Profile = {
 	LastSeen: number,
 	BankedFossils: number,
 	BankedAt: number,
+	BankedRate: number,
 	FirstJoinAt: number,
 	NewPlayerProtectionDone: boolean,
 }

@@ -38,6 +38,7 @@ ReplicatedStorage
     │   ├── Net                      (ModuleScript)  remote wrapper + rate limits
     │   ├── Patch                    (ModuleScript)  structural diff + apply (shared)
     │   ├── Economy                  (ModuleScript)  income/sell/bank maths (shared)
+    │   ├── Stats                    (ModuleScript)  derived player stats (shared)
     │   ├── AssetBuilder             (ModuleScript)  placeholder model generation
     │   ├── Signal                   (ModuleScript)  lightweight event class
     │   ├── RNG                      (ModuleScript)  weighted pick, luck maths
@@ -80,7 +81,7 @@ ServerScriptService
         ├── DailyService             7-day rewards, streaks
         ├── RebirthService           rebirth validation + grants
         ├── IndexService             discovery tracking + milestones
-        ├── UpgradeService           upgrade purchase validation
+        ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, gamepass ownership cache
         ├── LeaderboardService       OrderedDataStore aggregation
         ├── NotificationService      toast/banner/takeover dispatch
@@ -106,7 +107,7 @@ StarterPlayer
             ├── AnimationController
             ├── EggCarryController   carry visuals, chase HUD
             ├── ParkController       income floaters, park-side visuals
-            ├── ShopController
+            ├── ShopController       the three upgrade boards
             ├── IndexController
             ├── QuestController
             ├── TeleportController

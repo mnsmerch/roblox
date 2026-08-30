@@ -92,12 +92,38 @@ RebirthConfig.CacheTiersBelowBest = 1
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 
---- Fossil cost of performing rebirth number `n` (1-indexed).
+--[[
+	Identical to UpgradeConfig.RoundSignificant, duplicated rather than required
+	because this module is declared dependency-free and every config loads it.
+	Six lines of arithmetic with no state; the spec asserts the two agree.
+]]
+local function roundSignificant(value: number, digits: number?): number
+	if value <= 0 then
+		return 0
+	end
+	local places = digits or 3
+	local magnitude = math.floor(math.log(value, 10)) - (places - 1)
+	local scale = 10 ^ magnitude
+	if scale < 1 then
+		return math.floor(value + 0.5)
+	end
+	return math.floor(value / scale + 0.5) * scale
+end
+
+--[[
+	Fossil cost of performing rebirth number `n` (1-indexed).
+
+	Rounded to three significant figures for the same reason every upgrade
+	price is (UpgradeConfig.RoundSignificant): a price is a thing a player
+	reads and a thing a comparison is made against. Unrounded, rebirth 3 comes
+	out as 6760000.000000001 - which renders with a tail of digits, and which a
+	player holding exactly 6,760,000 Fossils cannot afford.
+]]
 function RebirthConfig.CostOf(n: number): number
 	if n < 1 then
 		return 0
 	end
-	return RebirthConfig.BaseCost * RebirthConfig.Growth ^ (n - 1)
+	return roundSignificant(RebirthConfig.BaseCost * RebirthConfig.Growth ^ (n - 1))
 end
 
 function RebirthConfig.DinosaursRequired(n: number): number

@@ -46,6 +46,7 @@ local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
 local Net = require(Shared.Modules.Net)
 local Signal = require(Shared.Modules.Signal)
+local Stats = require(Shared.Modules.Stats)
 
 local IncubationService = {}
 
@@ -70,7 +71,7 @@ function IncubationService.DurationFor(data, rarity: string): number
 		return 60
 	end
 
-	local speedMult = UpgradeConfig.EffectAt("incubatorSpeed", data.Upgrades.incubatorSpeed or 0)
+	local speedMult = Stats.IncubationMult(data)
 	return math.max(5, math.floor(tier.IncubationSecs * speedMult))
 end
 
@@ -79,7 +80,7 @@ function IncubationService.GetSlotCount(player: Player): number
 	if not data then
 		return 0
 	end
-	return UpgradeConfig.EffectAt("incubators", data.Upgrades.incubators or 0)
+	return Stats.Incubators(data)
 end
 
 local function firstFreeSlot(data, slotCount: number): number?

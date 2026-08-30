@@ -121,8 +121,29 @@ figures. Growth is deliberately varied so the "best next buy" changes over time.
 
 **Design check — is there always something to buy?** At every point in the
 curve, the cheapest un-maxed upgrade costs less than **180 seconds** of the
-player's current income. Verified against the simulation in §8. This is a hard
-constraint; any new upgrade added later must be re-checked against it.
+player's current income. This is a hard constraint; any new upgrade added later
+must be re-checked against it.
+
+> **Measured** in `tests/step13_spec.lua` against §8's own curve, with a greedy
+> buyer who always saves for the cheapest un-maxed track. The horizon is one
+> rebirth run, because `Upgrades` and `Defences` both reset on rebirth (§6) —
+> so a run is the only window in which "the cheapest un-maxed upgrade" means
+> anything.
+>
+> | Window | Levels bought | Worst wait | Over 180 s |
+> |---|---:|---:|---:|
+> | First 2 hours | 88 | 148 s | 0 |
+> | To Rebirth 1 (3 h) | 116 | **185 s** | 1 |
+>
+> The constraint holds outright through the whole FTUE window. Across a full
+> run it holds for 115 of 116 purchases; the exception is Feeding Trough L13 at
+> 2 h 51 m — 874,000 Fossils against ~4,700/sec — a 3 % overshoot at the last
+> purchase before the published rebirth. Dropping that track's growth from 1.66
+> to 1.65 closes it, at the cost of a slightly cheaper income multiplier.
+>
+> Maxing every track costs **1.67 B** Fossils in total; rebirth 1 costs 250 K.
+> The tree is deliberately far cheaper than the curve it sits under — that is
+> what makes the rebirth reset in §6 the real sink rather than a formality.
 
 ---
 

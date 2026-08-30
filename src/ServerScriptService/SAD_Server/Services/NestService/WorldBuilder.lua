@@ -69,6 +69,70 @@ end
 	Step 7 scope is a floor to stand on. The Bone Market, Fossil Lab, Colosseum
 	and Event Arena from docs/02 §1.1 arrive with the systems that need them.
 ]]
+--[[
+	The Bone Market: the two upgrade boards from docs/06 §5, standing in the
+	plaza where a player walking in from any park passes them.
+
+	Each board carries a `ShopBoard` attribute. The client's ShopController
+	reads it off the prompt and opens that tab - opening a menu is not
+	something the server needs to be told about, so there is no remote here.
+]]
+local BONE_MARKET_BOARDS = {
+	{ Board = "park", Label = "BONE MARKET  ·  PARK", Angle = 200 },
+	{ Board = "explorer", Label = "BONE MARKET  ·  EXPLORER", Angle = 250 },
+}
+
+--- Distance from the plaza centre. Far enough not to crowd the monument, well
+--- inside HubRadius so a board is never floating over the edge.
+local BONE_MARKET_RADIUS = 90
+
+local function buildBoneMarket(hub: Model)
+	local market = Instance.new("Model")
+	market.Name = "BoneMarket"
+
+	for _, board in BONE_MARKET_BOARDS do
+		local angle = math.rad(board.Angle)
+		local position = Vector3.new(math.cos(angle), 0, math.sin(angle)) * BONE_MARKET_RADIUS
+
+		-- Local +Z faces the plaza centre, matching the convention PlotBuilder
+		-- established: LookVector is the CFrame's local -Z, so aiming the
+		-- LookVector outward puts the readable face inward.
+		local facing = CFrame.lookAt(position + Vector3.new(0, 6, 0), position * 2)
+
+		local stall = part({
+			Name = board.Board,
+			Size = Vector3.new(16, 12, 3),
+			CFrame = facing,
+			Color = Color3.fromHex("6B4E2E"),
+			Material = Enum.Material.WoodPlanks,
+			Parent = market,
+		})
+		stall:SetAttribute("ShopBoard", board.Board)
+
+		part({
+			Name = "Sign",
+			Size = Vector3.new(14, 4, 0.6),
+			CFrame = facing * CFrame.new(0, 4, -1.8),
+			Color = Color3.fromHex("FFB020"),
+			Material = Enum.Material.Neon,
+			CanCollide = false,
+			Parent = market,
+		})
+
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.ActionText = "Open"
+		prompt.ObjectText = board.Label
+		prompt.HoldDuration = 0
+		prompt.MaxActivationDistance = 14
+		prompt.RequiresLineOfSight = false
+		prompt:SetAttribute("ShopBoard", board.Board)
+		prompt.Parent = stall
+	end
+
+	market.Parent = hub
+	return market
+end
+
 function WorldBuilder.BuildHub(parent: Instance): Model
 	local hub = Instance.new("Model")
 	hub.Name = "Hub"
@@ -95,6 +159,8 @@ function WorldBuilder.BuildHub(parent: Instance): Model
 		Transparency = 0.25,
 		Parent = hub,
 	})
+
+	buildBoneMarket(hub)
 
 	hub.Parent = parent
 	return hub

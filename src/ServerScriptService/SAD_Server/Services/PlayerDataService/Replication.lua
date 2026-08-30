@@ -83,6 +83,8 @@ local WITHHELD = {
 	RobuxSpent = "spend history; nothing on the client should render it",
 	LastSeen = "used only to compute offline income, server-side",
 	FirstJoinAt = "account age drives protection rules; server-side only",
+	BankedRate = "the rate the current banking interval accrues at; the client "
+		.. "renders the LIVE rate, which it derives from its own dinosaurs",
 }
 
 --- Flushed the moment they change rather than on the next tick.

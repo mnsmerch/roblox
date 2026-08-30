@@ -59,6 +59,39 @@ local AUTO_COLLECT_INTERVAL = 30
 -- ── Rate ────────────────────────────────────────────────────────────────────
 
 --[[
+	Closes the current banking interval and opens a new one at today's rate.
+
+	MUST be called whenever the park's output changes. The bank accrues at
+	`BankedRate`, frozen at the start of the interval, precisely so that a rate
+	change cannot pay retroactively for time that elapsed at the old rate -
+	otherwise placing a strong dinosaur after idling hands the player a full
+	bank instantly, and store/re-place becomes a money printer.
+
+	The old rate comes out of the PROFILE, not the cache, so this is correct no
+	matter whether the caller settles before or after writing the change.
+]]
+function EconomyService.SettleBank(player: Player)
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return
+	end
+
+	-- The live rate is what the NEXT interval accrues at. Computed directly
+	-- rather than through GetRate, because the cache may still hold the value
+	-- this settle exists to replace.
+	local nextRate = Economy.ParkIncomeRate(data)
+	local banked = Economy.BankedNow(data, os.time(), nextRate)
+
+	PlayerDataService.UpdateKeys(player, { "BankedFossils", "BankedAt", "BankedRate" }, function(profile)
+		profile.BankedFossils = banked
+		profile.BankedAt = os.time()
+		profile.BankedRate = nextRate
+	end, "settle bank")
+
+	rateCache[player] = nextRate
+end
+
+--[[
 	Anything that could change a park's output calls this.
 
 	Deliberately blunt: it is far better to recompute a rate that did not change
@@ -67,6 +100,7 @@ local AUTO_COLLECT_INTERVAL = 30
 ]]
 function EconomyService.InvalidateRate(player: Player)
 	rateCache[player] = nil
+	EconomyService.SettleBank(player)
 end
 
 function EconomyService.GetRate(player: Player): number
@@ -114,12 +148,15 @@ function EconomyService.Collect(player: Player): number
 		return 0
 	end
 
-	PlayerDataService.UpdateKeys(player, { "Fossils", "BankedFossils", "BankedAt", "Stats" }, function(profile)
-		profile.Fossils = Economy.ClampFossils(profile.Fossils + banked)
-		profile.BankedFossils = 0
-		profile.BankedAt = os.time()
-		profile.Stats.FossilsEarned += banked
-	end, "collect")
+	local rate = EconomyService.GetRate(player)
+	PlayerDataService.UpdateKeys(player,
+		{ "Fossils", "BankedFossils", "BankedAt", "BankedRate", "Stats" }, function(profile)
+			profile.Fossils = Economy.ClampFossils(profile.Fossils + banked)
+			profile.BankedFossils = 0
+			profile.BankedAt = os.time()
+			profile.BankedRate = rate
+			profile.Stats.FossilsEarned += banked
+		end, "collect")
 
 	EconomyService.Collected:Fire(player, banked)
 	return banked
@@ -251,8 +288,12 @@ function EconomyService.Start(app)
 		-- the previous session.
 		task.defer(grantOffline, player, data)
 
-		PlayerDataService.UpdateKeys(player, { "BankedAt" }, function(profile)
+		-- Opens a fresh interval stamped with this session's real rate. Offline
+		-- time is paid separately above and must not also accrue in the bank.
+		local rate = Economy.ParkIncomeRate(data)
+		PlayerDataService.UpdateKeys(player, { "BankedAt", "BankedRate" }, function(profile)
 			profile.BankedAt = os.time()
+			profile.BankedRate = rate
 		end, "session start")
 	end)
 
@@ -267,8 +308,10 @@ function EconomyService.Start(app)
 	]]
 	local DataService = app.Get("DataService")
 	DataService.BeforeSave:Connect(function(player, data)
-		local banked = Economy.BankedNow(data, os.time(), EconomyService.GetRate(player))
-		data.BankedFossils = banked
+		-- Folds at BankedRate, which is what the elapsed seconds earned. The
+		-- interval is not closed - BankedRate carries on unchanged - so a save
+		-- mid-interval is invisible to the player.
+		data.BankedFossils = Economy.BankedNow(data, os.time(), EconomyService.GetRate(player))
 		data.BankedAt = os.time()
 	end)
 

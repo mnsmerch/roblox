@@ -318,10 +318,16 @@ eq("small values unrounded", UpgradeConfig.RoundSignificant(42), 42)
 ------------------------------------------------------------------ rebirth
 section("RebirthConfig")
 
+--[[
+	Rebirth costs are rounded to three significant figures like every other
+	price (Step 13). Asserted as exact whole numbers, because that is the whole
+	point of the rounding - the raw curve gives 6760000.000000001 at rebirth 3
+	and 182790400 at rebirth 5, neither of which is a price anyone should read.
+]]
 eq("rebirth 1 costs 250k", RebirthConfig.CostOf(1), 250000)
 eq("rebirth 2 costs 1.3M", RebirthConfig.CostOf(2), 1300000)
-near("rebirth 3 costs 6.76M", RebirthConfig.CostOf(3), 6760000, 1)
-near("rebirth 5 costs ~183M", RebirthConfig.CostOf(5), 182790400, 100)
+eq("rebirth 3 costs 6.76M exactly", RebirthConfig.CostOf(3), 6760000)
+eq("rebirth 5 costs 183M exactly", RebirthConfig.CostOf(5), 183000000)
 near("rebirth 8 costs ~25.7B", RebirthConfig.CostOf(8), 25.70e9, 0.02e9)
 near("rebirth 12 costs ~18.8T", RebirthConfig.CostOf(12), 18.79e12, 0.05e12)
 

@@ -15,8 +15,7 @@
 	Every function here is PURE - profile in, number out - which is what lets
 	docs/05's published values be asserted rather than played for.
 
-	Depends on: RarityConfig, DinoConfig, MutationConfig, RebirthConfig,
-	            UpgradeConfig.
+	Depends on: RarityConfig, DinoConfig, MutationConfig, RebirthConfig, Stats.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,7 +25,7 @@ local DinoConfig = require(Shared.Config.DinoConfig)
 local MutationConfig = require(Shared.Config.MutationConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
-local UpgradeConfig = require(Shared.Config.UpgradeConfig)
+local Stats = require(Shared.Modules.Stats)
 
 local Economy = {}
 
@@ -63,7 +62,7 @@ function Economy.IncomeOf(entry, data): number
 
 	if data then
 		income *= RebirthConfig.IncomeMultiplier(data.Rebirths)
-		income *= UpgradeConfig.EffectAt("feedingTrough", data.Upgrades.feedingTrough or 0)
+		income *= Stats.ParkIncomeMult(data)
 	end
 
 	return income
@@ -135,7 +134,7 @@ end
 	going out (docs/05 §3).
 ]]
 function Economy.BankSeconds(data): number
-	return UpgradeConfig.EffectAt("bankSize", data.Upgrades.bankSize or 0)
+	return Stats.BankSecs(data)
 end
 
 function Economy.BankCap(data, rate: number?): number
@@ -149,15 +148,35 @@ end
 	server does no per-player work between reads and an idle server costs
 	nothing. docs/13 flags an O(dinos) income loop as the bug to watch for in
 	this step, and this is the shape that avoids it.
+
+	═══ TWO RATES, AND WHY ═════════════════════════════════════════════════════
+	Accrual uses `data.BankedRate` - the rate frozen when the interval started -
+	NOT the rate passed in. The bank pays for seconds that have already elapsed,
+	so it must pay for them at the rate that was in force while they elapsed.
+	Using the live rate would let a player idle at a low rate, place their best
+	dinosaur, and have the whole idle window retroactively pay at the new one:
+	a full bank, instantly, repeatable by storing and re-placing.
+
+	`rate` is still the live rate, used for the CAP and returned for display -
+	both of which describe the park as it is now.
+
+	Whoever changes the rate is responsible for settling first
+	(EconomyService.SettleBank), which is what keeps BankedRate honest.
+	═══════════════════════════════════════════════════════════════════════════
+
+	The cap bounds ACCRUAL, not the stored balance. A player who banks 500 and
+	then stores a dinosaur has a smaller cap but must not lose the 500 they
+	already earned, so the ceiling is `max(cap, BankedFossils)`.
 ]]
 function Economy.BankedNow(data, now: number, rate: number?): (number, number, number)
-	local currentRate = rate or Economy.ParkIncomeRate(data)
-	local cap = currentRate * Economy.BankSeconds(data)
+	local liveRate = rate or Economy.ParkIncomeRate(data)
+	local cap = liveRate * Economy.BankSeconds(data)
 
+	local stored = data.BankedFossils or 0
 	local elapsed = math.max(0, now - (data.BankedAt or now))
-	local banked = (data.BankedFossils or 0) + currentRate * elapsed
+	local accrued = (data.BankedRate or 0) * elapsed
 
-	return math.min(banked, cap), currentRate, cap
+	return math.min(stored + accrued, math.max(cap, stored)), liveRate, cap
 end
 
 -- ── Offline ─────────────────────────────────────────────────────────────────
@@ -195,8 +214,7 @@ end
 --- Placement slots: the upgrade track plus the rebirth grant. Gamepasses add
 --- to this in Step 21.
 function Economy.SlotCap(data): number
-	return UpgradeConfig.EffectAt("dinoSlots", data.Upgrades.dinoSlots or 0)
-		+ RebirthConfig.BonusDinoSlots(data.Rebirths)
+	return Stats.DinoSlots(data)
 end
 
 return Economy

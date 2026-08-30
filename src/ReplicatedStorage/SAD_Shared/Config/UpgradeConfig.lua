@@ -141,6 +141,28 @@ function UpgradeConfig.Get(trackId: string)
 	return tracks[trackId]
 end
 
+--[[
+	Which profile table holds this track's level.
+
+	docs/10 §1 splits them: `Upgrades` for the park and explorer boards,
+	`Defences` for the defence board. That split is easy to get wrong in a
+	caller - and getting it wrong is silent, because a missing key reads as
+	level 0, so a bought defence simply never applies. One answer, here.
+]]
+function UpgradeConfig.StoreFor(trackId: string): string
+	local entry = tracks[trackId]
+	return if entry and entry.Board == "defence" then "Defences" else "Upgrades"
+end
+
+--- The level a profile currently has on a track, from whichever table holds it.
+function UpgradeConfig.LevelIn(data, trackId: string): number
+	if not data then
+		return 0
+	end
+	local store = data[UpgradeConfig.StoreFor(trackId)]
+	return (store and store[trackId]) or 0
+end
+
 --- Cost of buying level `level` (1-indexed). 0 for an invalid level, which
 --- callers must treat as "not purchasable" rather than "free".
 function UpgradeConfig.CostOf(trackId: string, level: number): number

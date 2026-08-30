@@ -49,6 +49,7 @@ local Log = require(Shared.Modules.Log)
 local Net = require(Shared.Modules.Net)
 local RNG = require(Shared.Modules.RNG)
 local Signal = require(Shared.Modules.Signal)
+local Stats = require(Shared.Modules.Stats)
 
 local DinosaurService = {}
 
@@ -126,7 +127,7 @@ function DinosaurService.GetStorageCap(player: Player): number
 	if not data then
 		return 0
 	end
-	return UpgradeConfig.EffectAt("dinoStorage", data.Upgrades.dinoStorage or 0)
+	return Stats.DinoStorage(data)
 end
 
 -- ── Placement ───────────────────────────────────────────────────────────────

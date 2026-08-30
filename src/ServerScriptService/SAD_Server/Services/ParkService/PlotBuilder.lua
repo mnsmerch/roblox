@@ -171,6 +171,40 @@ function PlotBuilder.Build(index: number): Model
 		Color = ParkConfig.Color.GateArch,
 		Parent = gate,
 	})
+	--[[
+		The defence board, docs/06 §5's "Park Gate" third board. Beside the
+		gate rather than in the hub, because what it sells is about THIS park:
+		a player deciding whether to buy a Fence is standing at the thing a
+		thief walks through.
+
+		Same contract as the Bone Market stalls - a `ShopBoard` attribute the
+		client reads off the prompt. No remote: opening a menu is not a server
+		concern, and the purchase remote validates the board anyway.
+	]]
+	local defenceBoard = part({
+		Name = "DefenceBoard",
+		Size = Vector3.new(8, 7, 1.5),
+		-- Mounted on the OUTER face of the front-right wall, so it faces a
+		-- player walking up from the hub and cannot intrude on the enclosure
+		-- grid inside. The wall spans z = half +/- WallThickness/2, so
+		-- half + 1 + depth/2 sits flush against it.
+		CFrame = origin * CFrame.new(gateGap * 0.5 + 7, 4,
+			half + ParkConfig.WallThickness * 0.5 + 0.75),
+		Color = ParkConfig.Color.GateArch,
+		Material = Enum.Material.Metal,
+		Parent = gate,
+	})
+	defenceBoard:SetAttribute("ShopBoard", "defence")
+
+	local defencePrompt = Instance.new("ProximityPrompt")
+	defencePrompt.ActionText = "Open"
+	defencePrompt.ObjectText = "PARK GATE  ·  DEFENCE"
+	defencePrompt.HoldDuration = 0
+	defencePrompt.MaxActivationDistance = 12
+	defencePrompt.RequiresLineOfSight = false
+	defencePrompt:SetAttribute("ShopBoard", "defence")
+	defencePrompt.Parent = defenceBoard
+
 	gate.PrimaryPart = lintel
 	gate.Parent = model
 

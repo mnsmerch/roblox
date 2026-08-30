@@ -59,6 +59,9 @@ _shared.Modules.Net = { OnEvent = function() end, FireClient = function() end, F
 
 _shared.Config.ParkConfig = ParkConfig
 
+--@INJECT Stats=src/ReplicatedStorage/SAD_Shared/Modules/Stats.lua@
+_shared.Modules.Stats = Stats
+
 --@INJECT Economy=src/ReplicatedStorage/SAD_Shared/Modules/Economy.lua@
 
 _shared.Modules.Economy = Economy

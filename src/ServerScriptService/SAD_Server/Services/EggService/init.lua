@@ -60,6 +60,7 @@ local Log = require(Shared.Modules.Log)
 local Net = require(Shared.Modules.Net)
 local RNG = require(Shared.Modules.RNG)
 local Signal = require(Shared.Modules.Signal)
+local Stats = require(Shared.Modules.Stats)
 
 local EggService = {}
 
@@ -120,10 +121,8 @@ end
 --- The luck composition itself, as a pure function of profile and zone.
 --- Split out so the formula is covered by tests rather than only by playing.
 function EggService.LuckFrom(data, zone): number
-	local luck = 0
-	luck += UpgradeConfig.EffectAt("eggSense", data.Upgrades.eggSense or 0)
-	luck += RebirthConfig.LuckBonus(data.Rebirths)
-	luck += (data.LuckNodes or 0) * 0.005
+	-- Stats owns the upgrade + rebirth + node composition and the 4.0 cap.
+	local luck = Stats.Luck(data)
 
 	if zone then
 		luck += zone.LuckBonus
@@ -175,7 +174,7 @@ function EggService.GetCapacity(player: Player): number
 	if not data then
 		return 1
 	end
-	return UpgradeConfig.EffectAt("eggPouch", data.Upgrades.eggPouch or 0)
+	return Stats.EggCapacity(data)
 end
 
 --[[
@@ -193,7 +192,7 @@ function EggService.GetCarryPenalty(player: Player): number
 	end
 
 	local data = PlayerDataService.Get(player)
-	local strongBack = data and UpgradeConfig.EffectAt("strongBack", data.Upgrades.strongBack or 0) or 1
+	local strongBack = data and Stats.CarryPenaltyMult(data) or 1
 
 	return EggService.CarryPenaltyOf(penalties, strongBack)
 end
@@ -277,10 +276,10 @@ local function applySpeed(player: Player)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
 	local data = PlayerDataService.Get(player)
-	local speedMult = data and UpgradeConfig.EffectAt("runnersLegs", data.Upgrades.runnersLegs or 0) or 1
-	local rebirthBonus = data and RebirthConfig.MoveSpeedBonus(data.Rebirths) or 0
+	-- Stats folds Runner's Legs and the rebirth grant into one multiplier.
+	local speedMult = data and Stats.MoveSpeedMult(data) or 1
 
-	local speed = GameConfig.BaseWalkSpeed * speedMult * (1 + rebirthBonus)
+	local speed = GameConfig.BaseWalkSpeed * speedMult
 	speed *= (1 - EggService.GetCarryPenalty(player))
 	speed *= modifierProduct(player)
 

@@ -129,6 +129,13 @@ local ProfileTemplate = {
 	LastSeen = 0, -- os.time() at last save; EconomyService reads for offline income
 	BankedFossils = 0, -- uncollected park bank
 	BankedAt = 0, -- os.time() the bank was last computed
+	--[[
+		The Fossils/sec the CURRENT banking interval accrues at, frozen when
+		the interval started. Not a cache of the live rate: the bank pays for
+		time already elapsed, so it has to be paid at the rate that was in
+		force during it. See EconomyService.SettleBank.
+	]]
+	BankedRate = 0,
 	FirstJoinAt = 0, -- 0 means "never joined" - how a new player is detected
 	NewPlayerProtectionDone = false,
 }

@@ -67,7 +67,7 @@ local EXPECTED = {
 	"Daily", "Quests", "Tutorial",
 	"Gamepasses", "ProcessedReceipts", "RobuxSpent",
 	"Settings", "Stats",
-	"LastSeen", "BankedFossils", "BankedAt", "FirstJoinAt", "NewPlayerProtectionDone",
+	"LastSeen", "BankedFossils", "BankedAt", "BankedRate", "FirstJoinAt", "NewPlayerProtectionDone",
 }
 
 local expectedSet = {}

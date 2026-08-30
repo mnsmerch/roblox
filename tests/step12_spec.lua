@@ -32,6 +32,9 @@ for name, mod in pairs({ GameConfig = GameConfig, RarityConfig = RarityConfig, M
 	_shared.Config[name] = mod
 end
 
+--@INJECT Stats=src/ReplicatedStorage/SAD_Shared/Modules/Stats.lua@
+_shared.Modules.Stats = Stats
+
 --@INJECT Economy=src/ReplicatedStorage/SAD_Shared/Modules/Economy.lua@
 
 local passed, failed = 0, 0
@@ -111,6 +114,10 @@ eq("bank seconds at max", Economy.BankSeconds(profile({ Upgrades = { bankSize = 
 local park = profile({ Dinos = { a = dino("trex", "legendary") } })
 local rate = Economy.ParkIncomeRate(park)
 park.BankedAt = 1000
+-- Opening a banking interval means stamping the rate it accrues at. This is
+-- what EconomyService.SettleBank does on every rate change; a fixture that
+-- skips it banks nothing, which is the correct behaviour and is asserted below.
+park.BankedRate = rate
 
 -- Accrual is exactly rate x elapsed until the cap.
 for _, elapsed in ipairs({ 0, 1, 10, 30, 59 }) do
@@ -123,7 +130,8 @@ local capped = Economy.BankedNow(park, 1000 + 600, rate)
 near("the bank fills and stops", capped, rate * 60, 0.001)
 near("the cap is rate x bank seconds", capped, Economy.BankCap(park, rate), 0.001)
 
-local bigger = profile({ Dinos = park.Dinos, Upgrades = { bankSize = 10 }, BankedAt = 1000 })
+local bigger = profile({ Dinos = park.Dinos, Upgrades = { bankSize = 10 },
+	BankedAt = 1000, BankedRate = rate })
 ok("upgrading the bank holds more",
 	Economy.BankedNow(bigger, 1000 + 600, rate) > capped)
 
@@ -138,7 +146,7 @@ section("Collecting twice cannot pay twice")
 	Collect resets BankedFossils to 0 and BankedAt to now in the same write, so
 	a second call in the same second finds zero stored and zero elapsed.
 ]]
-local wallet = profile({ Dinos = park.Dinos, BankedAt = 1000 })
+local wallet = profile({ Dinos = park.Dinos, BankedAt = 1000, BankedRate = rate })
 local firstTake = Economy.BankedNow(wallet, 1060, rate)
 ok("the first collection is worth something", firstTake > 0)
 

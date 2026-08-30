@@ -370,6 +370,41 @@ all three of which require it. `EconomyService` is a Folder named
 
 ---
 
+## Step 13 — upgrades and the shop
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Modules/Stats` | `src/ReplicatedStorage/SAD_Shared/Modules/Stats.lua` *(new)* |
+| `Services/UpgradeService` | `src/.../Services/UpgradeService/init.lua` *(new)* |
+| `SAD_Client/Controllers/ShopController` | `src/.../Controllers/ShopController.lua` *(new)* |
+| `SAD_Shared/Config/GameConfig` | *(re-paste — `LuckPerNode`)* |
+| `SAD_Shared/Config/UpgradeConfig` | *(re-paste — `StoreFor`, `LevelIn`)* |
+| `SAD_Shared/Config/RebirthConfig` | *(re-paste — rounded costs)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — rule 9 handler hook)* |
+| `SAD_Shared/Modules/Economy` | *(re-paste — banking at `BankedRate`)* |
+| `Services/DataService/ProfileTemplate` | *(re-paste — `BankedRate`)* |
+| `Services/PlayerDataService/Replication` | *(re-paste — `BankedRate` withheld)* |
+| `Services/EconomyService` | *(re-paste — `SettleBank`)* |
+| `Services/DinosaurService` | *(re-paste — reads `Stats`)* |
+| `Services/MutationService` | *(re-paste — reads `Stats`)* |
+| `Services/IncubationService` | *(re-paste — reads `Stats`)* |
+| `Services/EggService` | *(re-paste — reads `Stats`)* |
+| `Services/NestService/WorldBuilder` | *(re-paste — the Bone Market)* |
+| `Services/ParkService/PlotBuilder` | *(re-paste — the defence board)* |
+| `SAD_Shared/Modules/Types` | *(re-paste — `BankedRate`)* |
+
+`Stats` is a ModuleScript beside `Economy`. Install it **first** — six other
+files require it, and each one errors at boot without it. `UpgradeService` is a
+Folder containing a ModuleScript named `init`, the same shape as
+`EconomyService`.
+
+**This step re-pastes more files than any before it**, because `Stats` replaced
+eleven scattered copies of the same `UpgradeConfig.EffectAt(...)` expression.
+None of those services changed behaviour — they read the same number from one
+place instead of computing it themselves.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1345,9 +1380,119 @@ maths bug.
 
 ---
 
+## Step 13 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][UpgradeService] Ready. 14 tracks across 3 boards
+[SAD/S][Boot] Loaded 12 service(s): ...
+[SAD/C][ShopController] Ready. 14 tracks across 3 boards
+[SAD/C][Boot] Loaded 8 controller(s): ...
+```
+
+The config report should also now show rule 9 checking handlers rather than
+skipping them: `ok  [R9] 14 upgrade track(s) validated`.
+
+**2. Three ways in.** Press **4**, or tap **SHOP** on the bottom bar, or walk to
+one of the two Bone Market stalls in the hub — the stalls open the shop on
+*their* tab. The defence board is mounted on your own park's gate wall.
+
+**3. Buy something.** Grant yourself Fossils first:
+
+```lua
+local Econ = require(game.ServerScriptService.SAD_Server.Services.EconomyService)
+local p = game.Players:GetPlayers()[1]
+Econ.AddFossils(p, 500000, "test")
+```
+
+Each row reads `L3  x1.24 income  →  x1.32 income` with the price on the button.
+Buy one: the level moves, the Fossil counter drops, a toast confirms it. The row
+redraws from the profile, not from the response — so it is correct even if the
+toast is missed.
+
+**4. Buy Max never overspends.** The second button reads `BUY 4 · 12.4K` — how
+many levels this balance covers, and the exact total. Press it: you get four
+levels and 12.4 K leaves your wallet. Then check the boundary:
+
+```lua
+local Up = require(game.ServerScriptService.SAD_Server.Services.UpgradeService)
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+PDS.Update(p, function(d) d.Fossils = 799 end, "test")   -- one short of L1
+print(Up.Buy(p, "dinoSlots", 26))                         -- 0, 0, not enough Fossils
+print(PDS.Get(p).Fossils)                                 -- still 799, never negative
+```
+
+**5. Each effect actually applies.** docs/13's test for this step. Buy a level,
+then read the stat back — the value must move, and must match what the shop row
+previewed:
+
+```lua
+local Stats = require(game.ReplicatedStorage.SAD_Shared.Modules.Stats)
+Econ.AddFossils(p, 1e9, "test")
+for _, id in ipairs({"dinoSlots","incubators","feedingTrough","runnersLegs","eggPouch","eggSense"}) do
+    Up.Buy(p, id, 3)
+end
+local s = Stats.Of(PDS.Get(p))
+print(s.DinoSlots, s.Incubators, s.ParkIncomeMult, s.MoveSpeedMult, s.EggCapacity, s.Luck)
+```
+
+Runner's Legs is the visible one: your character speeds up the moment it is
+bought, without a respawn.
+
+**6. Defences go in the other table.** The defence board writes to `Defences`,
+not `Upgrades`, and the stats read it from there:
+
+```lua
+Up.Buy(p, "fence", 3)
+local d = PDS.Get(p)
+print(d.Defences.fence, d.Upgrades.fence)          -- 3, nil
+print(Stats.StealHoldBonus(d))                      -- 3.0
+```
+
+Then confirm the remotes police their own board — this is why there are two:
+
+```lua
+-- In the CLIENT console (F9), try to buy a defence through the upgrade remote:
+local Net = require(game.ReplicatedStorage.SAD_Shared.Modules.Net)
+Net.FireServer("RequestBuyUpgrade", "fence", 5)
+```
+
+Nothing happens, and the server logs `sent 'fence' to the upgrade remote`.
+
+**7. An income upgrade must not pay backwards.** The important one. With a
+placed dinosaur:
+
+```lua
+PDS.Update(p, function(d) d.BankedAt = os.time() - 300 end, "test")
+print(Econ.GetBanked(p))          -- five minutes at the CURRENT rate
+Up.Buy(p, "feedingTrough", 10)
+print(Econ.GetBanked(p))          -- must NOT have jumped
+```
+
+The second figure must be essentially the first. If buying Feeding Trough
+inflates the existing bank, `SettleBank` is not running before the level
+changes — and store/re-place becomes a money printer.
+
+**8. Levels survive a rejoin.** Buy several, press Stop, Play again. Levels and
+Fossils are where you left them, and the shop redraws from the loaded profile.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Shop opens empty | `Stats` not installed, so `ShopController` failed at require |
+| A row shows `MAXED` at level 0 | `MaxLevel` misread — check the track in `UpgradeConfig` |
+| Buy Max charges more than it showed | `CostRange` and `CostOf` disagreeing; both must sum *rounded* prices |
+| Bought a Fence, nothing changed | Level written to `Upgrades`; it belongs in `Defences` |
+| Bank jumps when buying Feeding Trough | `SettleBank` not called before the level write (test 7) |
+| `Effect.Kind ... has no handler` at boot | A new track without a `Stats.KindToField` entry — that is rule 9 working |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,580 assertions** without Studio:
+Syntax-checks every source file and runs **2,686 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1369,6 +1514,7 @@ Fetches the Luau CLI on first run.
 | `tests/step10_spec.lua` | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `tests/step11_spec.lua` | Mutation distributions against their published weights, Prime pairing rules and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, and the incubation ladder |
 | `tests/step12_spec.lua` | Footprint occupancy under a packed grid, the banking formula against its own cap, offline earnings at every rebirth, slot caps, and the day-one income curve against docs/05 |
+| `tests/step13_spec.lua` | Every price against integrality and monotonicity, all 14 published max effects, `Stats` block-vs-helper agreement, the Upgrades/Defences split in both directions, Buy Max bounds, the retroactive-income guard, and docs/05 §5's 180-second constraint across a rebirth run |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

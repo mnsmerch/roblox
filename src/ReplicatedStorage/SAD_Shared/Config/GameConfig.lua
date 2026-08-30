@@ -109,6 +109,10 @@ GameConfig.MaxCarryPenalty = 0.85
 --- multi-carry is a real risk/reward call rather than a free upgrade.
 GameConfig.MultiCarryEffectiveness = 0.40
 
+--- Luck granted per DNA-bought Luck Node (docs/10 §1). Named here rather than
+--- inline in one service, because Stats folds it and the shop previews it.
+GameConfig.LuckPerNode = 0.005
+
 --[[
 	Movement correction. Sustained implausible movement snaps the character
 	back to its last valid position - never a kick. False positives happen on
