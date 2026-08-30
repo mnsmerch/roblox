@@ -70,7 +70,7 @@ StealService.StealCompleted = Signal.new()
 StealService.StealFailed = Signal.new()
 
 local PlayerDataService, EconomyService, ParkService, DinosaurService
-local EggService, NestService
+local EggService, NestService, NotificationService
 
 --[[
 	The carry tokens. Server memory only, never written to a profile - the same
@@ -307,6 +307,18 @@ local function stealableReason(ownerData, uid: string, ownerUserId: number): str
 	return nil
 end
 
+--[[
+	Takes down the "until resolved" alert on a park. Called from every exit
+	from a raid - completed, tagged, disconnected, died, cancelled - because an
+	alert that outlives its cause is worse than one that never fired.
+]]
+local function clearRaidAlert(ownerUserId: number)
+	local owner = Players:GetPlayerByUserId(ownerUserId)
+	if owner then
+		NotificationService.Clear(owner, "raid")
+	end
+end
+
 -- ── The hold ────────────────────────────────────────────────────────────────
 
 local function stopHold(thief: Player)
@@ -315,6 +327,7 @@ local function stopHold(thief: Player)
 		return
 	end
 	holding[thief] = nil
+	clearRaidAlert(state.OwnerUserId)
 	Net.FireClient("StealAlert", thief, { Kind = "holdEnded" })
 end
 
@@ -358,6 +371,16 @@ function StealService.Begin(thief: Player, ownerUserId: number, dinoUid: string)
 		DinoName = DinosaurService.DisplayNameOf(entry),
 		Seconds = holdSecs,
 	})
+
+	--[[
+		docs/08 §5's worked example of the `alert` severity is literally
+		"SOMEONE IS STEALING YOUR ALPHA UTAHRAPTOR!", and its rule is "until
+		resolved". So this one does not time out - it is cleared when the raid
+		ends, whichever way it ends.
+	]]
+	NotificationService.Alert(owner, string.format("%s IS STEALING YOUR %s!",
+		string.upper(thief.DisplayName),
+		string.upper(DinosaurService.DisplayNameOf(entry))), { Tag = "raid" })
 	Net.FireClient("StealAlert", thief, { Kind = "holdStarted", Seconds = holdSecs })
 
 	StealService.StealStarted:Fire(thief, ownerUserId, dinoUid)
@@ -457,6 +480,7 @@ local function completeHold(thief: Player)
 	-- could have changed in them is checked again here.
 	local ok, reason = StealService.CanRaid(thief, state.OwnerUserId)
 	if not ok then
+		clearRaidAlert(state.OwnerUserId)
 		StealService.StealFailed:Fire(thief, reason or "no longer possible")
 		return
 	end
@@ -465,6 +489,7 @@ local function completeHold(thief: Player)
 	local ownerData = PlayerDataService.Get(owner)
 	local blocked = stealableReason(ownerData, state.Uid, state.OwnerUserId)
 	if blocked then
+		clearRaidAlert(state.OwnerUserId)
 		StealService.StealFailed:Fire(thief, blocked)
 		return
 	end
@@ -539,6 +564,7 @@ local function returnCarry(thief: Player, reason: string)
 		return
 	end
 	carrying[thief] = nil
+	clearRaidAlert(token.OwnerUserId)
 
 	if token.Model then
 		token.Model:Destroy()
@@ -600,6 +626,7 @@ local function completeSteal(thief: Player)
 
 	local snapshot = table.clone(entry)
 	carrying[thief] = nil
+	clearRaidAlert(token.OwnerUserId)
 	if token.Model then
 		token.Model:Destroy()
 	end
@@ -870,6 +897,7 @@ end
 
 function StealService.Init(app)
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	EconomyService = app.Get("EconomyService")
 	ParkService = app.Get("ParkService")
 	DinosaurService = app.Get("DinosaurService")

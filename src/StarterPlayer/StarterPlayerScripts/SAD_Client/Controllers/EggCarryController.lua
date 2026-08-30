@@ -279,11 +279,6 @@ function EggCarryController.Start(app)
 	Net.On("ChaseState", onChaseState)
 
 	--[[
-		Minimal Notify handling so banking an egg has an ending. Step 16's
-		NotificationController takes this over with the full queue and
-		severities; until then a banner is better than silence.
-	]]
-	--[[
 		The end of an egg's story. Reveals two and three arrive together here,
 		and the camera shake scales with the tier so a Titan lands differently
 		from a Common.
@@ -300,22 +295,6 @@ function EggCarryController.Start(app)
 		end
 	end)
 
-	Net.On("Notify", function(payload)
-		if type(payload) ~= "table" then
-			return
-		end
-
-		-- The offline summary is a reveal, not a toast: it is the first thing a
-		-- returning player sees and it deserves the same treatment as a hatch.
-		if payload.Kind == "reveal" then
-			HUDController.ShowReveal(payload)
-			return
-		end
-
-		if payload.Text then
-			HUDController.Flash(payload.Text, payload.Color, payload.Duration)
-		end
-	end)
 
 	-- Only the distance readouts need refreshing; carry contents and chase
 	-- starts are event-driven.

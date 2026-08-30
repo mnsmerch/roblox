@@ -62,6 +62,7 @@ ZoneService.ShrineFound = Signal.new()
 ZoneService.Teleported = Signal.new()
 
 local PlayerDataService, EconomyService, ParkService, SecurityService, WildAIService
+local NotificationService
 
 --- One-time Fossil bonus for touching a shrine (docs/02 §2.2).
 local SHRINE_BONUS = 500
@@ -134,8 +135,7 @@ function ZoneService.Unlock(player: Player, zoneId: string): (boolean, string?)
 
 	ZoneService.ZoneUnlocked:Fire(player, zoneId)
 
-	Net.FireClient("Notify", player, {
-		Kind = "reveal",
+	NotificationService.Takeover(player, {
 		Title = "ZONE UNLOCKED",
 		Subtitle = zone.Tagline,
 		Headline = string.upper(zone.DisplayName),
@@ -183,12 +183,8 @@ function ZoneService.RegisterShrine(player: Player, zoneId: string): (boolean, s
 	EconomyService.AddFossils(player, SHRINE_BONUS, "shrine " .. zoneId)
 	ZoneService.ShrineFound:Fire(player, zoneId)
 
-	Net.FireClient("Notify", player, {
-		Kind = "toast",
-		Title = string.upper(zone.DisplayName) .. " SHRINE",
-		Subtitle = string.format("On your Obelisk  ·  +%s", Format.Number(SHRINE_BONUS)),
-		Duration = 3.5,
-	})
+	NotificationService.Toast(player, string.upper(zone.DisplayName) .. " SHRINE",
+		string.format("On your Obelisk  ·  +%s", Format.Number(SHRINE_BONUS)))
 
 	Log.info("ZoneService", "%s registered the %s shrine", player.Name, zoneId)
 	return true
@@ -339,12 +335,8 @@ local function checkTrespass(player: Player)
 	SecurityService.Exempt(player, TELEPORT_EXEMPT_SECS)
 	character:PivotTo(target)
 
-	Net.FireClient("Notify", player, {
-		Kind = "toast",
-		Title = string.upper(zone.DisplayName) .. " IS LOCKED",
-		Subtitle = string.format("%s Fossils to open", Format.Number(zone.Unlock.Fossils)),
-		Duration = 3,
-	})
+	NotificationService.Toast(player, string.upper(zone.DisplayName) .. " IS LOCKED",
+		string.format("%s Fossils to open", Format.Number(zone.Unlock.Fossils)))
 end
 
 -- ── Prompts ─────────────────────────────────────────────────────────────────
@@ -399,12 +391,7 @@ local function bindWorld()
 			prompt.Triggered:Connect(function(player)
 				local ok, reason = ZoneService.Unlock(player, zoneId)
 				if not ok and reason then
-					Net.FireClient("Notify", player, {
-						Kind = "toast",
-						Title = string.upper(zone.DisplayName),
-						Subtitle = reason,
-						Duration = 2.5,
-					})
+					NotificationService.Toast(player, string.upper(zone.DisplayName), reason)
 				end
 			end)
 
@@ -426,6 +413,7 @@ end
 
 function ZoneService.Init(app)
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	EconomyService = app.Get("EconomyService")
 	ParkService = app.Get("ParkService")
 	SecurityService = app.Get("SecurityService")
@@ -448,9 +436,7 @@ function ZoneService.Start(app)
 		end
 		local ok, reason = ZoneService.Unlock(player, zoneId)
 		if not ok and reason then
-			Net.FireClient("Notify", player, {
-				Kind = "toast", Title = "CANNOT UNLOCK", Subtitle = reason, Duration = 2.5,
-			})
+			NotificationService.Toast(player, "CANNOT UNLOCK", reason)
 		end
 	end)
 
@@ -460,9 +446,7 @@ function ZoneService.Start(app)
 		end
 		local ok, reason = ZoneService.Teleport(player, destination)
 		if not ok and reason then
-			Net.FireClient("Notify", player, {
-				Kind = "toast", Title = "CANNOT TRAVEL", Subtitle = reason, Duration = 2.5,
-			})
+			NotificationService.Toast(player, "CANNOT TRAVEL", reason)
 		end
 	end)
 

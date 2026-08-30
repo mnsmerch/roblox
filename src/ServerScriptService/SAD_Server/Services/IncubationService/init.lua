@@ -53,6 +53,7 @@ local IncubationService = {}
 IncubationService.Hatched = Signal.new()
 
 local DinosaurService, MutationService, PlayerDataService, ParkService, EggService
+local NotificationService
 
 --- [player] = { [slotIndex] = ProximityPrompt }
 local prompts: { [Player]: { [number]: ProximityPrompt } } = {}
@@ -180,12 +181,12 @@ local function announce(player: Player, entry, odds: string)
 	local isPrime = entry.Mutation2 ~= nil
 
 	--[[
-		Step 16's NotificationService owns severities, queueing and the
-		cross-server takeover. Until then this is a plain server-wide Notify,
-		which is enough for the moment to exist and be tested.
+		RarityConfig decides how loud a hatch is: AnnounceKind is the severity
+		and CrossServer decides whether every server hears it. Both are content
+		values, so a re-tune is a config edit rather than a code change.
 	]]
 	if isPrime then
-		Net.FireAllClients("Notify", {
+		NotificationService.Announce({
 			Kind = "banner",
 			Text = string.format("PRIME! %s hatched a %s", player.DisplayName, name),
 			Color = RarityConfig.GetColor(entry.Rarity),
@@ -196,16 +197,23 @@ local function announce(player: Player, entry, odds: string)
 	end
 
 	if tier.AnnounceKind == "takeover" then
-		Net.FireAllClients("Notify", {
+		local payload = {
 			Kind = "takeover",
-			Text = string.format("NO WAY! %s hatched a %s - %s", player.DisplayName, name, odds),
+			Title = "NO WAY!",
+			Subtitle = string.format("%s hatched a %s", player.DisplayName, name),
+			Headline = odds,
 			Color = RarityConfig.GetColor(entry.Rarity),
 			Duration = 6,
-		})
+		}
+		if tier.CrossServer then
+			NotificationService.Announce(payload)
+		else
+			NotificationService.All(payload)
+		end
 		Log.info("IncubationService", "%s HATCH: %s got a %s (%s)",
 			string.upper(tier.DisplayName), player.Name, name, odds)
 	elseif tier.AnnounceKind == "banner" or tier.AnnounceKind == "toast" then
-		Net.FireAllClients("Notify", {
+		NotificationService.All({
 			Kind = "banner",
 			Text = string.format("%s hatched a %s %s!", player.DisplayName, tier.DisplayName, name),
 			Color = RarityConfig.GetColor(entry.Rarity),
@@ -255,11 +263,8 @@ function IncubationService.Claim(player: Player, slotIndex: number): (boolean, s
 
 	if not uid then
 		-- Refused, not lost. The egg stays ready in its incubator.
-		Net.FireClient("Notify", player, {
-			Kind = "alert",
-			Text = "Dinosaur storage full - sell or place some first",
-			Duration = 3,
-		})
+		NotificationService.Alert(player, "Dinosaur storage full - sell or place some first",
+			{ Duration = 3, Tag = "storage" })
 		return false, reason
 	end
 
@@ -438,6 +443,7 @@ function IncubationService.Init(app)
 	DinosaurService = app.Get("DinosaurService")
 	MutationService = app.Get("MutationService")
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	ParkService = app.Get("ParkService")
 	EggService = app.Get("EggService")
 end

@@ -174,6 +174,13 @@ function AssetBuilder.Build(): (number, number, number)
 	local eggs = folder("Eggs")
 	folder("Effects")
 	folder("UI")
+	--[[
+		Empty on purpose. SoundController looks its slots up by name in here,
+		so dropping a Sound named `Hatch` in gives hatching a sound with no
+		code change - and no asset id is invented anywhere to stand in for
+		one that does not exist yet (docs/15 §3).
+	]]
+	folder("Sounds")
 
 	local builtDinos, builtEggs, kept = 0, 0, 0
 

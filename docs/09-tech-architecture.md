@@ -31,6 +31,7 @@ ReplicatedStorage
     │   ├── IndexConfig              (ModuleScript)  milestone rewards
     │   ├── ParkConfig               (ModuleScript)  plot geometry + grid maths
     │   ├── ChaseConfig              (ModuleScript)  guardian archetype behaviour
+    │   ├── NotificationConfig       (ModuleScript)  severities, queueing, publish budget
     │   └── ConfigValidator          (ModuleScript)  boot-time content checks
     ├── Modules                      (Folder)
     │   ├── Types                    (ModuleScript)  Luau type exports
@@ -85,8 +86,8 @@ ServerScriptService
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, gamepass ownership cache
         ├── LeaderboardService       OrderedDataStore aggregation
-        ├── NotificationService      toast/banner/takeover dispatch
-        ├── BroadcastService         MessagingService cross-server announcements
+        ├── NotificationService      the one place a notification is created
+        ├── BroadcastService         MessagingService: the only file that knows it exists
         └── AnalyticsService         AnalyticsService wrappers + custom logging
 
 StarterPlayer
@@ -103,8 +104,8 @@ StarterPlayer
             ├── HUDController        top bar, bottom bar, action zone
             ├── InputController      keyboard/touch/gamepad mapping
             ├── CameraController     shake, event cuts, takeovers
-            ├── NotificationController
-            ├── SoundController
+            ├── NotificationController  the queue and the four severities
+            ├── SoundController      slots by name; no asset ids invented
             ├── AnimationController
             ├── EggCarryController   carry visuals, chase HUD
             ├── ParkController       income floaters, park-side visuals

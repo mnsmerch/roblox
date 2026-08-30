@@ -69,7 +69,7 @@ EggService.EggDropped = Signal.new()
 EggService.RareGrab = Signal.new()
 EggService.EggDeposited = Signal.new()
 
-local NestService, SecurityService, PlayerDataService, ParkService
+local NestService, SecurityService, PlayerDataService, ParkService, NotificationService
 
 --- [player] = { [eggUid] = token }. Server-only, never replicated, never saved.
 local carried: { [Player]: { [string]: any } } = {}
@@ -679,7 +679,7 @@ end
 --- Fires the Notify remote directly. Step 16's NotificationService takes over
 --- the dispatch; until then this is the only feedback path that exists.
 local function notify(player: Player, kind: string, text: string, color: Color3?)
-	Net.FireClient("Notify", player, {
+	NotificationService.Send(player, {
 		Kind = kind,
 		Text = text,
 		Color = color,
@@ -768,6 +768,7 @@ function EggService.Init(app)
 	NestService = app.Get("NestService")
 	SecurityService = app.Get("SecurityService")
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	ParkService = app.Get("ParkService")
 
 	luckPowers = RarityConfig.LuckPowers()

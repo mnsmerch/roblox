@@ -44,7 +44,7 @@ local UpgradeService = {}
 
 UpgradeService.Purchased = Signal.new()
 
-local PlayerDataService, EconomyService, EggService, IncubationService
+local PlayerDataService, EconomyService, EggService, IncubationService, NotificationService
 
 --[[
 	Tracks whose effect is visible immediately rather than at the next natural
@@ -189,6 +189,7 @@ end
 
 function UpgradeService.Init(app)
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	EconomyService = app.Get("EconomyService")
 	EggService = app.Get("EggService")
 	IncubationService = app.Get("IncubationService")
@@ -227,21 +228,13 @@ function UpgradeService.Start(_app)
 
 			local bought, spent, reason = UpgradeService.Buy(player, trackId, wanted)
 			if bought > 0 then
-				Net.FireClient("Notify", player, {
-					Kind = "toast",
-					Title = entry.DisplayName,
-					Subtitle = string.format("Level %d  ·  −%s",
+				NotificationService.Toast(player, entry.DisplayName,
+					string.format("Level %d  ·  −%s",
 						UpgradeService.LevelOf(PlayerDataService.Get(player), trackId),
 						Format.Number(spent)),
-					Duration = 2.5,
-				})
+					{ Sound = "Upgrade" })
 			elseif reason then
-				Net.FireClient("Notify", player, {
-					Kind = "toast",
-					Title = entry.DisplayName,
-					Subtitle = reason,
-					Duration = 2,
-				})
+				NotificationService.Toast(player, entry.DisplayName, reason)
 			end
 		end
 	end

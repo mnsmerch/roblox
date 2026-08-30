@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 15 of 24 complete.** Players can rob each other. Awaiting a **two-client** Studio test before Step 16.
+## Status: **Step 16 of 24 complete.** The game can tell you things. Awaiting the Studio Play tests before Step 17.
 
 ## Completed
 
@@ -26,6 +26,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 13** — upgrades & the shop | 14 tracks, shared `Stats`, three boards, 106 more assertions |
 | 2026-08-30 | **Step 14** — zones & teleports | Unlock gates, shrines, the Obelisk, 82 more assertions |
 | 2026-08-30 | **Step 15** — player raiding | The full raid state machine, shields, Vault, 109 more assertions |
+| 2026-08-30 | **Step 16** — notifications & announcements | Four severities, the queue, MessagingService, 87 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -46,7 +47,7 @@ accident. Updated at the end of every build step.
 | 13 | Upgrades & shop | ✅ **done** |
 | 14 | Zones & teleports | ✅ **done** |
 | 15 | Player raiding | ✅ **done** |
-| 16 | Notifications & announcements | ⬜ |
+| 16 | Notifications & announcements | ✅ **done** |
 | 17 | Weather | ⬜ |
 | 18 | Server events | ⬜ |
 | 19 | Quests, dailies, index | ⬜ |
@@ -74,6 +75,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/ConfigValidator` | ModuleScript | 10 content rules + 4 structural; aborts boot on error |
 | `Config/ParkConfig` | ModuleScript | Plot geometry, grid maths, visual tiers |
 | `Config/ChaseConfig` | ModuleScript | 20 guardian archetypes, chase tuning, the guardian cap |
+| `Config/NotificationConfig` | ModuleScript | The 4 severities, queue limits, publish budget, payload sanitising |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -121,6 +123,8 @@ rebuilds this on every server start.
 | `Services/EconomyService` | ModuleScript | The lazy bank, collection, offline earnings, all currency movement |
 | `Services/UpgradeService` | ModuleScript | Pricing, Buy and Buy Max in one transaction, live effect application |
 | `Services/StealService` | ModuleScript | The raid state machine, tagging, shields, Vault, insurance |
+| `Services/NotificationService` | ModuleScript | The one place a notification is created |
+| `Services/BroadcastService` | ModuleScript | **The only file that knows MessagingService exists** |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -272,6 +276,52 @@ complete. If they leave mid-carry the raid voids. This follows from docs/03
 save a dinosaur by disconnecting — see the note under Open questions.
 
 ```
+NotificationService.Toast(player, title, subtitle?, opts?)
+NotificationService.Banner(player, text, opts?)
+NotificationService.Takeover(player, { Title, Subtitle, Headline, ... })
+NotificationService.Alert(player, text, opts?)      -- until Clear
+NotificationService.Clear(player, tag)
+NotificationService.Send(player, payload)           -- the raw form
+NotificationService.All(payload, exclude?)          -- this server
+NotificationService.Announce(payload)               -- every server
+NotificationService.GetCounts() -> { toast, banner, takeover, alert }
+
+BroadcastService.Publish(payload) -> queued
+BroadcastService.IsAvailable() -> boolean
+BroadcastService.GetStats() -> { Published, Dropped, Received, Failed }
+BroadcastService.Received  Signal(payload)
+
+NotificationConfig.Severities / Order / Fallback / UntilResolved
+NotificationConfig.Resolve(kind?) -> kind
+NotificationConfig.DurationOf(kind, override?) -> seconds
+NotificationConfig.Outranks(a, b) -> boolean
+NotificationConfig.Sanitise(payload) -> payload?
+
+NotificationController.Handle(payload)
+NotificationController.Clear(tag)
+NotificationController.GetQueueDepth() -> number
+
+SoundController.Play(slot, opts?) -> played
+SoundController.PlayNotification(kind) -> played
+SoundController.SetCategoryVolume(category, volume)
+SoundController.IsAvailable(slot) -> boolean
+```
+
+**Severity is a server decision; the queue is a client one.** The client never
+promotes a toast into a takeover — a client that could decide what was worth
+dimming the screen for is a client that can dim everyone's screen for nothing.
+What it owns is how many fit, what drops, and what this player has muted.
+
+**`NotificationConfig.Sanitise` runs on both sides.** The server sanitises on
+the way out and the client on the way in — the same function, so a payload that
+arrived over `MessagingService` has exactly the guarantees a local one does.
+
+**No asset ids are invented.** `SoundController` names 12 slots and looks each
+one up by name in `SAD_Shared/SAD_Assets/Sounds`. Drop a `Sound` named `Hatch`
+in and hatching has a sound; until then the call is a no-op. Same stance
+`AssetBuilder` takes for models.
+
+```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
 WildAIService.GetActiveCount() -> number
@@ -387,6 +437,8 @@ client never hears about; there is no polling fallback by design.
 | `ParkController` | ModuleScript | Income floaters, computed locally from the replicated profile |
 | `ShopController` | ModuleScript | The three upgrade boards; prices rendered, never sent |
 | `TeleportController` | ModuleScript | The zone wheel, the PARK teleport, gate-barrier visibility |
+| `NotificationController` | ModuleScript | The queue: three visual weights, one takeover at a time |
+| `SoundController` | ModuleScript | 12 named slots, looked up by name; no asset ids invented |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -482,11 +534,15 @@ current value, then on every change at or under that path. No polling anywhere.
 | 50 | `DinosaurService.Create` gained `params.Acquired` and `params.HatchedAt` | A stolen dinosaur was counting as hatched: it inflated the thief's `DinosHatched` (a leaderboard stat), reset the dinosaur's age to today, and could end New Player Protection, whose condition is "until first Rare **hatch**". Additive to a frozen API, not a rename | docs/10 §1 |
 | 51 | No `RaidController`; raid UI lives in `HUDController` and `ParkController` | The alerts are banners and reveal panels, which `HUDController` already owns; hiding your own Steal prompts is a park-side visual, which `ParkController` already owns. Adding a controller for eleven message handlers would put raid code in three places instead of two | docs/09 §1 |
 | 52 | `SecurityLevel` sums the defence **board**, not a fixed list of three ids | So the V1.4 pass that adds Alarm Horn and Electric Fence raises the raid hold ceiling to its published 9 s with no code change — and so V1's real ceiling of 7.5 s is a fact about the content rather than a hardcoded number | docs/03 §5 |
+| 53 | Added `NotificationConfig` as config module #11 | The severity durations are read on both sides — the server stamps them, the client counts them down — so they cannot live on either side alone. It also holds the payload sanitiser, which docs/09 §7.7 requires on receive and which is only trustworthy if it is literally the same function that ran on send | docs/09 §1, §7.7 |
+| 54 | `Kind = "reveal"` renamed to `Kind = "takeover"` | "reveal" was a placeholder I introduced in Step 12 before the severities existed; docs/08 §5 names four severities and reveal is not one of them. Renamed at the step that formalises the vocabulary rather than leaving a fifth kind that means the same as one of the four. `HUDController.ShowReveal` keeps its name — it is the renderer, and "reveal" describes what it draws | docs/08 §5 |
+| 55 | `SoundController` contains **no asset ids** | There is no audio yet, and an invented `rbxassetid://` is a silent 404 that looks like working code. Slots are looked up by name in `SAD_Assets/Sounds`, so the audio pass is a folder of files rather than a code change — the same stance `AssetBuilder` takes for models | docs/15 §3 |
+| 56 | `EggCarryController`'s placeholder `Notify` handler removed | It was explicitly marked "Step 16's NotificationController takes this over". Two handlers on one remote renders everything twice | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 56 source files and runs **2,877
-assertions** outside Roblox. Last run: **2,877 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 61 source files and runs **2,964
+assertions** outside Roblox. Last run: **2,964 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -502,6 +558,7 @@ assertions** outside Roblox. Last run: **2,877 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step16_spec` (87) | All four severities against docs/08 §5, a strict and unique priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back *downward*, payload sanitising against nesting, functions, NaN, infinity, numeric keys and over-long keys, sanitiser idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own documented floor |
 | `step15_spec` (85) | The hold formula against docs/03 §4.2 including V1's real ceiling and the V1.4 arithmetic, shield stacking proven un-permanent under fifty grants, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property with its rollback, vault slots, carry weight, and every published cooldown |
 | `step14_spec` (76) | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside the zone they travel to, zone-square clearance against the park ring, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim against the published income curve |
 | `step13_spec` (100) | Every price in the game against integrality, monotonicity and determinism; all 14 published max effects; `Stats.Of` against every single-field helper on three profiles; the Upgrades/Defences split asserted in both directions; Buy Max bounds and the never-negative rule; the retroactive-income guard; and docs/05 §5's 180-second constraint measured across a rebirth run |
@@ -730,6 +787,26 @@ Bugs the specs caught before they shipped:
     raid in progress — and if the transfer then completed, that is a dupe. The
     server-side `locked` registry is that guard, and it is checked in every
     owner-side mutation path.
+
+24. **docs/09's publish budget was six per minute; I had written twenty.**
+    Caught by asserting the spec against the *document* rather than against
+    the code. Six is right and I moved the code to it: the measurement in the
+    same spec shows a full server hatching flat out generates about **0.0015
+    announcements per minute** — only Secret and Titan cross servers, at 1 in
+    80,000 in the hardest V1 zone — so six is four thousand times what the game
+    can produce. A budget with that much headroom should be the tighter number,
+    not the looser one.
+
+    Worth recording as a habit rather than a bug: when the code and a frozen
+    document disagree and the document is defensible, the code moves.
+
+25. **`SoundController` names twelve slots and contains no asset ids.** There
+    is no audio yet. The tempting shortcut is a table of plausible
+    `rbxassetid://` numbers, which produces a game that logs nothing, plays
+    nothing, and looks finished. Instead each slot is looked up by name in
+    `SAD_Assets/Sounds` and the boot line says `Ready, silent` with a count.
+    The audio handover is then a folder of files with the right names, and the
+    absence is visible in the log rather than inferred from the quiet.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

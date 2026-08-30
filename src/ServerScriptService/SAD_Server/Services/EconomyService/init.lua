@@ -47,7 +47,7 @@ local EconomyService = {}
 
 EconomyService.Collected = Signal.new()
 
-local PlayerDataService, ParkService
+local PlayerDataService, ParkService, NotificationService
 
 --- [player] = cached fossils/second, or nil when it needs recomputing.
 local rateCache: { [Player]: number } = {}
@@ -236,8 +236,7 @@ local function grantOffline(player: Player, data)
 
 	EconomyService.AddFossils(player, earned, "offline")
 
-	Net.FireClient("Notify", player, {
-		Kind = "reveal",
+	NotificationService.Takeover(player, {
 		Title = "WHILE YOU WERE AWAY",
 		Subtitle = string.format("%s of income at %s Fossils/sec",
 			Format.Time(seconds), Format.Number(rate)),
@@ -253,6 +252,7 @@ end
 
 function EconomyService.Init(app)
 	PlayerDataService = app.Get("PlayerDataService")
+	NotificationService = app.Get("NotificationService")
 	ParkService = app.Get("ParkService")
 end
 

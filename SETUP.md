@@ -448,6 +448,40 @@ already owns park-side visuals.
 
 ---
 
+## Step 16 — notifications and announcements
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/NotificationConfig` | `src/ReplicatedStorage/SAD_Shared/Config/NotificationConfig.lua` *(new)* |
+| `Services/NotificationService` | `src/.../Services/NotificationService/init.lua` *(new)* |
+| `Services/BroadcastService` | `src/.../Services/BroadcastService/init.lua` *(new)* |
+| `SAD_Client/Controllers/NotificationController` | `src/.../Controllers/NotificationController.lua` *(new)* |
+| `SAD_Client/Controllers/SoundController` | `src/.../Controllers/SoundController.lua` *(new)* |
+| `SAD_Shared/Modules/AssetBuilder` | *(re-paste — the `Sounds` folder)* |
+| `Services/EconomyService` | *(re-paste — uses NotificationService)* |
+| `Services/UpgradeService` | *(re-paste — uses NotificationService)* |
+| `Services/IncubationService` | *(re-paste — cross-server hatch announcements)* |
+| `Services/EggService` | *(re-paste — uses NotificationService)* |
+| `Services/StealService` | *(re-paste — the raid alert)* |
+| `Services/NestService/ZoneService` | *(re-paste — uses NotificationService)* |
+| `SAD_Client/Controllers/EggCarryController` | *(re-paste — hands `Notify` over)* |
+
+`NotificationService` and `BroadcastService` are Folders containing a
+ModuleScript named `init`. Both are already in Bootstrap's roster at positions
+6 and 7, so no edit there.
+
+**This step removes a handler as well as adding one.** `EggCarryController` had
+a placeholder `Net.On("Notify", …)` since Step 8; `NotificationController` now
+owns that remote. Re-paste `EggCarryController` or you will get every
+notification twice.
+
+**Cross-server messaging needs API access.** Game Settings → Security → *Enable
+Studio Access to API Services*. Without it the game runs normally and logs
+`Cross-server announcements are OFF` — that is the designed degradation, not a
+failure.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1745,9 +1779,140 @@ of the plot without Player 1 doing anything.
 
 ---
 
+## Step 16 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][BroadcastService] Subscribed to 'SAD_Announce' as 1a2b3c4d. Budget 6/60s
+[SAD/S][NotificationService] Ready. 4 severities, cross-server on
+[SAD/C][SoundController] Ready, silent. Drop Sound instances named after the 12 slots ...
+[SAD/C][NotificationController] Ready. 4 severities
+```
+
+`SoundController` reporting **silent** is correct — there are no audio files
+yet, and no asset ids were invented to stand in for them.
+
+**2. Each severity, on demand.** In the command bar:
+
+```lua
+local N = require(game.ServerScriptService.SAD_Server.Services.NotificationService)
+local p = game.Players:GetPlayers()[1]
+
+N.Toast(p, "Upgrade purchased", "Feeding Trough L4")
+task.wait(1)
+N.Banner(p, "MYTHIC HATCHED!")
+task.wait(1)
+N.Takeover(p, { Title = "NO WAY!", Subtitle = "You hatched a Titan", Headline = "1 IN 2,000,000" })
+task.wait(1)
+N.Alert(p, "SOMEONE IS STEALING YOUR ALPHA UTAHRAPTOR!")
+```
+
+Toast slides in top-right and leaves after 3 s. Banner is full-width for 5 s.
+Takeover is the centre panel. The **alert stays up** — that is the severity's
+whole definition. Clear it:
+
+```lua
+N.Clear(p, "alert")
+```
+
+**3. Toasts stack, oldest first out.** Fire five in a row; three are on screen
+at any moment and the oldest is the one that goes.
+
+```lua
+for i = 1, 5 do N.Toast(p, "Toast " .. i) task.wait(0.2) end
+```
+
+**4. Takeovers queue, then drop.** docs/13's test for this step:
+
+```lua
+for i = 1, 5 do
+    N.Takeover(p, { Title = "TAKEOVER " .. i, Headline = tostring(i) })
+end
+```
+
+They play **one at a time**, in order, and only the first four ever appear —
+one showing plus three queued. The fifth is dropped, not delayed. Check the
+depth from the client console (F9) while they run:
+
+```lua
+local NC = require(game.Players.LocalPlayer.PlayerScripts.SAD_Client.Controllers.NotificationController)
+print(NC.GetQueueDepth())    -- 3 during the burst, 0 once it drains
+```
+
+**5. Muting works, and cannot reach an alert.** Turn off other people's
+announcements and confirm your own park alert still arrives:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+PDS.Update(p, function(d) d.Settings.RareAnnouncements = false end, "test")
+N.All({ Kind = "banner", Text = "SOMEONE ELSE HATCHED A MYTHIC" })   -- silent
+N.Alert(p, "SOMEONE IS IN YOUR PARK!")                               -- still shows
+```
+
+**6. A malformed payload is dropped, not crashed.** These must all be no-ops
+with no error in Output:
+
+```lua
+N.Send(p, "not a table")
+N.Send(p, {})
+N.Send(p, { Kind = "shout", Text = "unknown severity" })   -- renders as a toast
+N.Send(p, { Text = "hi", Nested = { a = 1 }, Duration = 0/0 })
+```
+
+**7. Cross-server.** This is the one that needs a **published place**, not a
+Studio session: a single Studio run is a single server, so a message published
+there has nobody to arrive at. Publish, then open the game in two browser tabs
+and hatch a Secret or Titan in one:
+
+```lua
+local Inc = require(game.ServerScriptService.SAD_Server.Services.IncubationService)
+PDS.Update(p, function(d)
+    d.Eggs.testegg = { Rarity = "titan", Origin = "frozen", AcquiredAt = os.time() }
+end, "test")
+Inc.BeginIncubation(p, "testegg", 1)
+PDS.Update(p, function(d) d.Incubators[1].HatchAt = os.time() - 1 end, "test")
+Inc.Claim(p, 1)
+```
+
+The other tab gets the same takeover. Check the counters on both servers:
+
+```lua
+local B = require(game.ServerScriptService.SAD_Server.Services.BroadcastService)
+print(B.IsAvailable(), B.GetStats())   -- Published / Dropped / Received / Failed
+```
+
+**8. The budget refuses rather than throttling.** Publish more than six in a
+minute and the rest are dropped locally, with a warning naming the budget:
+
+```lua
+for i = 1, 10 do B.Publish({ Kind = "banner", Text = "flood " .. i }) end
+```
+
+Output shows `Publish budget spent (6/60s) - dropping`. That is the design:
+Roblox's own throttle drops silently, so the refusal happens here where it can
+be counted.
+
+**9. Sound is wired but silent.** Drop any `Sound` instance named `Hatch` into
+`SAD_Shared/SAD_Assets/Sounds` and hatch something — it plays. The boot line
+changes to `Ready. 1 of 12 slots have audio`. Nothing else in the game changes.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Every notification appears twice | `EggCarryController` still has its Step 8 `Net.On("Notify")` |
+| Takeovers overlap | `pumpTakeovers` re-entered — only one may be busy at a time |
+| Alert never goes away | Nothing called `Clear` with the same `Tag`; raids clear on every exit path |
+| `Cross-server announcements are OFF` | API services disabled — expected in a default Studio session |
+| Cross-server works but the sender sees it twice | The `From` stamp is not being compared against `game.JobId` |
+| Nothing plays on any action | Correct until `SAD_Assets/Sounds` has files in it |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,877 assertions** without Studio:
+Syntax-checks every source file and runs **2,964 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1772,6 +1937,7 @@ Fetches the Luau CLI on first run.
 | `tests/step13_spec.lua` | Every price against integrality and monotonicity, all 14 published max effects, `Stats` block-vs-helper agreement, the Upgrades/Defences split in both directions, Buy Max bounds, the retroactive-income guard, and docs/05 §5's 180-second constraint across a rebirth run |
 | `tests/step14_spec.lua` | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside their zone, zone-vs-park-ring clearance, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim |
 | `tests/step15_spec.lua` | The hold formula against docs/03 §4.2 including V1's real ceiling, shield stacking proven un-permanent, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property, vault slots, and every raid cooldown |
+| `tests/step16_spec.lua` | All four severities against docs/08 §5, a strict priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back downward, payload sanitising against nesting/NaN/long keys and idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own floor |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.
