@@ -22,7 +22,7 @@
 		HUDController.SetAction(text?, progress?)   -- the contextual prompt
 		HUDController.SetChaseMode(active)          -- Step 9 strips the HUD
 		HUDController.SetCompass(text?)             -- Step 6
-		HUDController.SetEventBanner(text?)         -- Step 18
+		HUDController.SetEventBanner(text?, priority?)  -- weather and events share it
 		HUDController.OnStealAlert(info)            -- Step 15 raid alerts
 
 	Depends on: UIController, StateController, InputController, Theme, Create,
@@ -799,11 +799,40 @@ function HUDController.SetCompass(text: string?)
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
 end
 
-function HUDController.SetEventBanner(text: string?)
-	eventBanner.Visible = text ~= nil
-	if text then
-		eventBanner.Label.Text = text
+--[[
+	The one banner slot under the top bar, and two systems want it: weather
+	(Step 17) and server events (Step 18).
+
+	`priority` decides who holds it. An event outranks weather because an event
+	is rarer, shorter and has something the player should do about it. A lower
+	priority cannot overwrite a higher one, and only the current holder can
+	clear it - otherwise weather's 1 Hz countdown would stamp over an event
+	banner a fraction of a second after it appeared.
+]]
+HUDController.BannerPriority = { Weather = 1, Event = 2 }
+
+local bannerHolder = 0
+
+function HUDController.SetEventBanner(text: string?, priority: number?)
+	local level = priority or 0
+
+	if text == nil then
+		-- Only the holder may release it.
+		if level < bannerHolder then
+			return
+		end
+		bannerHolder = 0
+		eventBanner.Visible = false
+		return
 	end
+
+	if level < bannerHolder then
+		return
+	end
+
+	bannerHolder = level
+	eventBanner.Visible = true
+	eventBanner.Label.Text = text
 end
 
 function HUDController.GetButton(id: string)

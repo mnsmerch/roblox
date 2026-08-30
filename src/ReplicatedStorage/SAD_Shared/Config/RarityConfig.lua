@@ -220,6 +220,20 @@ function RarityConfig.TierBelow(rarityId: string, steps: number?): string
 	return RarityConfig.Order[target]
 end
 
+--[[
+	The counterpart. Clamped at the top, so upgrading a Titan is a Titan rather
+	than an error or a nil.
+
+	Added in Step 18 for the meteor crater, which upgrades what it drops by one
+	tier; V1.1's Great Migration ("one zone's nests upgraded one full rarity
+	tier") is the same operation on a whole zone.
+]]
+function RarityConfig.TierAbove(rarityId: string, steps: number?): string
+	local rank = RarityConfig.RankOf(rarityId)
+	local target = math.clamp(rank + (steps or 1), 1, #RarityConfig.Order)
+	return RarityConfig.Order[target]
+end
+
 --- Lazily built Color3. Server code never needs one, so none are made at load.
 function RarityConfig.GetColor(rarityId: string): Color3
 	local tier = (RarityConfig.Tiers :: any)[rarityId]

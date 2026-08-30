@@ -456,6 +456,9 @@ local function spawnLoose(token, position: Vector3)
 		NestId = token.NestId,
 		SlotIndex = token.SlotIndex,
 		Penalty = token.Penalty,
+		-- Event eggs are guaranteed to hatch mutated; the flag rides the whole
+		-- way from the crater to the incubator rather than being re-derived.
+		Mutated = token.Mutated,
 		Model = model,
 		ExpiresAt = os.clock() + GameConfig.LooseEggLifetimeSecs,
 	}
@@ -469,6 +472,29 @@ local function spawnLoose(token, position: Vector3)
 
 	loose[entry.Uid] = entry
 	model.Parent = looseFolder
+end
+
+--[[
+	Puts an egg on the ground that came from no nest.
+
+	Step 18's events need this: a meteor crater and a parachute drop are eggs
+	that exist without anyone having stolen them. Everything downstream - the
+	grab prompt, the carry token, the deposit - is the same path a dropped egg
+	takes, so an event egg is never a second kind of egg.
+
+	`params` takes Rarity, Origin and an optional Mutated flag. Returns the uid.
+]]
+function EggService.SpawnEventEgg(params, position: Vector3): string
+	local tier = RarityConfig.Tiers[params.Rarity]
+	local token = {
+		Uid = string.sub(HttpService:GenerateGUID(false):gsub("-", ""), 1, 8),
+		Rarity = params.Rarity,
+		Origin = params.Origin or "plains",
+		Penalty = tier and tier.CarryPenalty or 0.2,
+		Mutated = params.Mutated == true,
+	}
+	spawnLoose(token, position)
+	return token.Uid
 end
 
 --- Picks up an egg someone dropped. Anyone may, which is the point.
@@ -498,6 +524,7 @@ function EggService.GrabLoose(player: Player, uid: string): (boolean, string?)
 		NestId = entry.NestId,
 		SlotIndex = entry.SlotIndex,
 		Penalty = entry.Penalty,
+		Mutated = entry.Mutated,
 		GrantedAt = os.time(),
 	}
 
@@ -735,6 +762,9 @@ function EggService.DepositAll(player: Player): (number, number)
 				Rarity = token.Rarity,
 				Origin = token.Origin,
 				AcquiredAt = os.time(),
+				-- Only written when true, so an ordinary egg's entry keeps the
+				-- exact three-field shape docs/10 §1 publishes.
+				Mutated = if token.Mutated then true else nil,
 			}
 			stored += 1
 			deposited += 1

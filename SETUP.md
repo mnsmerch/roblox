@@ -501,6 +501,38 @@ roster** — re-paste `Bootstrap` (the LocalScript) or it will never load.
 
 ---
 
+## Step 18 — server events
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/EventConfig` | `src/ReplicatedStorage/SAD_Shared/Config/EventConfig.lua` *(new)* |
+| `Services/EventService` | `src/.../Services/EventService/init.lua` *(new)* |
+| `Services/EventService/Handlers/MeteorImpact` | `src/.../Handlers/MeteorImpact.lua` *(new)* |
+| `Services/EventService/Handlers/Stampede` | `src/.../Handlers/Stampede.lua` *(new)* |
+| `Services/EventService/Handlers/NestFrenzy` | `src/.../Handlers/NestFrenzy.lua` *(new)* |
+| `Services/EventService/Handlers/AmberRain` | `src/.../Handlers/AmberRain.lua` *(new)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — rules 8 and 11 both fixed)* |
+| `SAD_Shared/Config/RarityConfig` | *(re-paste — `TierAbove`)* |
+| `Services/EggService` | *(re-paste — `SpawnEventEgg`)* |
+| `Services/MutationService` | *(re-paste — guaranteed mutations)* |
+| `Services/IncubationService` | *(re-paste — carries the flag)* |
+| `Services/NestService` | *(re-paste — `EventRespawnMultiplier`)* |
+| `Services/WildAIService` | *(re-paste — `EventSpeedMultiplier`)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — banner priority)* |
+| `SAD_Client/Controllers/WeatherController` | *(re-paste — banner priority)* |
+
+`EventService` is a **Folder** containing a ModuleScript named `init` **and a
+Folder named `Handlers`** holding the four handler ModuleScripts — the same
+nesting as `DataService/Migrations`. The handler names must match
+`EventConfig`'s `Handler` field exactly; rule 8 fails boot if they do not.
+
+**Re-paste `ConfigValidator` even if nothing else.** Rule 11 was added in Step
+17 but its function was never defined, so it has been a `nil` hole in the rule
+list since — registered, never run, silent. That is fixed here along with the
+guard that makes the same omission impossible to repeat.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -2038,9 +2070,136 @@ one thing is safe here.
 
 ---
 
+## Step 18 test
+
+**1. Boot.** Play. New lines, and one changed one:
+
+```
+[SAD/S][EventService] Ready. 4 event(s), every 12m 0s-18m 0s
+ok  [R8] all event handlers resolve
+ok  [R11] 4 weather(s) validated against their mutation modifiers
+```
+
+`R11` appearing at all is the fix — it was registered in Step 17 and never ran.
+If either line is missing, the handlers folder or the config is not where the
+validator looks.
+
+**2. Force each event.** The scheduler waits 12–18 minutes, so drive it
+directly:
+
+```lua
+local E = require(game.ServerScriptService.SAD_Server.Services.EventService)
+print(E.Begin("nestFrenzy"))
+```
+
+`Begin`, not `Start` — `Start(app)` belongs to Bootstrap's lifecycle, the same
+collision `IncubationService` hit in Step 11.
+
+- **Nest Frenzy** — take an egg and watch the bowl refill in about three
+  seconds; guardians visibly lag. Then `E.Stop()` and confirm both go back:
+
+  ```lua
+  local Nest = require(game.ServerScriptService.SAD_Server.Services.NestService)
+  local AI = require(game.ServerScriptService.SAD_Server.Services.WildAIService)
+  print(Nest.EventRespawnMultiplier, AI.EventSpeedMultiplier)   -- 1, 1
+  ```
+
+  A multiplier left behind is a permanently trivial game and nothing throws.
+
+- **Meteor Impact** — a dark disc grows on a random zone for 15 seconds, then
+  a crater and eight eggs. Grab one: it is an ordinary loose egg from that
+  moment, with the same prompt, carry and deposit. Hatch it — it is
+  **guaranteed** to be mutated.
+
+- **Dinosaur Stampede** — a marked lane from the hub to a zone, forty runners
+  streaming along it. Hold the prompt on one: you get a dinosaur, it places
+  itself, and the second attempt says *You have already captured one*.
+
+- **Amber Rain** — chunks fall over the hub for two minutes. Walk into one for
+  Fossils and DNA. Uncollected amber sinks into the ground rather than piling
+  up.
+
+**3. Nothing overlaps.** While one runs, a second must refuse:
+
+```lua
+E.Begin("nestFrenzy")
+print(E.Begin("amberRain"))   -- false, an event is already running
+```
+
+**4. The scoreboard, and the floor.** Let an event finish. Everyone who scored
+gets a takeover with the top five and their own place and reward. Then check
+the guarantee docs/04 §3.1 makes:
+
+```lua
+-- Score once, from a fresh account with no park at all.
+E.Begin("amberRain")
+E.Score(game.Players:GetPlayers()[1], 1)
+E.Stop("finished")
+```
+
+That player must still be paid — 500 Fossils, the flat floor. Three minutes of
+zero income is zero, and they are exactly who the guarantee exists for.
+
+**5. Rewards cannot be collected twice.** docs/13's hazard. Score, then leave
+and rejoin mid-event, then let it end:
+
+```lua
+print(E.GetScores())   -- your old score is gone; participation is per-session
+```
+
+The rejoined player has no score and collects nothing for what the previous
+session did. Rewards are read and cleared in one step, so a second payout sees
+an empty table.
+
+**6. An empty server ends the event.** The other hazard. Start an event, close
+every client, and watch Output:
+
+```
+[SAD/S][EventService] Nest Frenzy ended (empty), 0 participant(s)
+```
+
+No scoreboard, no payout, and the geometry is gone — an event running its
+meteor into an empty world is pure cost.
+
+**7. A player joining mid-event sees it.** With an event running, have a second
+client join. They get the current `EventState` immediately, not at the next
+event.
+
+**8. Teardown is complete.** After any event ends:
+
+```lua
+print(workspace.SAD_Runtime.Events:GetChildren())   -- {}
+```
+
+Empty. The handler's `Stop` and the Trove both run — the Trove is what
+guarantees it, because a handler that errors halfway through its own teardown
+must not leave a meteor in the sky.
+
+**9. A missing handler fails boot.** Rename `Handlers/Stampede` and Play:
+
+```
+[SAD/S] ERROR  [R8] event 'stampede' names handler 'Stampede', which does not exist
+```
+
+Rename it back.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| An event never fires on its own | The scheduler waits 12–18 minutes; use `Begin` to test |
+| Guardians stay slow after Nest Frenzy | `Stop` not restoring, or restoring to 1 instead of the previous value |
+| Two events at once | Something calling `Begin` directly while one runs; the scheduler itself waits |
+| Rewards paid twice | Scores read without being cleared in the same step |
+| Meteor eggs vanish at event end | Correct — they are loose eggs on `EggService`'s own timer, not the event's |
+| `R11` missing from the boot report | `ConfigValidator` not re-pasted, or `WeatherConfig` not passed to it |
+| Amber never spawns | `Tick` not being called — the handler must return a table with `Start` **and** `Stop` |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,049 assertions** without Studio:
+Syntax-checks every source file and runs **3,147 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2067,6 +2226,7 @@ Fetches the Luau CLI on first run.
 | `tests/step15_spec.lua` | The hold formula against docs/03 §4.2 including V1's real ceiling, shield stacking proven un-permanent, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property, vault slots, and every raid cooldown |
 | `tests/step16_spec.lua` | All four severities against docs/08 §5, a strict priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back downward, payload sanitising against nesting/NaN/long keys and idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own floor |
 | `tests/step17_spec.lua` | The published weather table, the Clear share for V1 *and* the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, and Prime's chance proven flat while its count rises |
+| `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

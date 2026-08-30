@@ -79,7 +79,8 @@ ServerScriptService
         ├── MutationService          mutation rolls, weather modifiers, reroll
         ├── StealService             raid state machine, tagging, shields, insurance
         ├── WeatherService           selection, effects; visuals are the client's
-        ├── EventService             server event scheduler + participation
+        ├── EventService             scheduler, participation, rewards
+        │   └── Handlers             one ModuleScript per event
         ├── QuestService             daily/weekly progress
         ├── DailyService             7-day rewards, streaks
         ├── RebirthService           rebirth validation + grants

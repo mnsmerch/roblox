@@ -137,6 +137,9 @@ function IncubationService.BeginIncubation(player: Player, eggUid: string, slotI
 			Origin = egg.Origin,
 			StartedAt = now,
 			HatchAt = now + duration,
+			-- Carried from the egg so an event egg still hatches mutated even
+			-- if it sat in storage for a week first.
+			Mutated = egg.Mutated,
 		}
 	end, "incubate")
 
@@ -253,7 +256,7 @@ function IncubationService.Claim(player: Player, slotIndex: number): (boolean, s
 
 	-- The egg's origin zone, so weather that is worse in one place follows the
 	-- egg rather than the player (docs/04 §2, Blizzard's "Frozen Valley x2").
-	local mutation, mutation2 = MutationService.Roll(player, slot.Origin)
+	local mutation, mutation2 = MutationService.Roll(player, slot.Origin, slot.Mutated)
 
 	local uid, entry, reason = DinosaurService.Create(player, {
 		SpeciesId = speciesId,

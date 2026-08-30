@@ -161,9 +161,10 @@ function WeatherController.OnWeatherChanged(info)
 	applyLook(current)
 
 	if current == "clear" then
-		HUDController.SetEventBanner(nil)
+		HUDController.SetEventBanner(nil, HUDController.BannerPriority.Weather)
 	else
-		HUDController.SetEventBanner(string.upper(entry.DisplayName))
+		HUDController.SetEventBanner(string.upper(entry.DisplayName),
+			HUDController.BannerPriority.Weather)
 		SoundController.Play("banner")
 	end
 
@@ -213,7 +214,8 @@ function WeatherController.Start(_app)
 			if current ~= "clear" then
 				local entry = WeatherConfig.Get(current)
 				HUDController.SetEventBanner(string.format("%s  ·  %s",
-					string.upper(entry.DisplayName), Format.Time(WeatherController.Remaining())))
+					string.upper(entry.DisplayName), Format.Time(WeatherController.Remaining())),
+					HUDController.BannerPriority.Weather)
 			end
 		end
 	end)

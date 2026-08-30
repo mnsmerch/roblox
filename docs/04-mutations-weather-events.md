@@ -152,6 +152,23 @@ clips.
 - Every event ends with a **contribution scoreboard** (top 5 by name).
 - Nobody who participates receives *nothing*. Minimum participation reward is
   always ≥ 3 minutes of that player's income.
+
+> **The measured top end is 12 minutes of income** — the floor times four, for
+> the top contributor. With events every 12–18 minutes, a player who wins every
+> one roughly doubles their income, which is the size "the main reason to stay
+> logged in" should be. A player earning nothing yet gets a flat 500 F floor
+> instead, since three minutes of zero is zero and they are exactly who the
+> guarantee exists for.
+>
+> **V1 ships four of the twelve** (docs/12): Meteor Impact, Dinosaur Stampede,
+> Nest Frenzy, Amber Rain. With four events the published *no-repeat-within-3*
+> rule leaves exactly one choice, which is a fixed rotation rather than a
+> weighted roll — so the exclusion depth is clamped to leave at least two, and
+> relaxes to the full 3 as events are added.
+>
+> **Meteor Impact ships its guaranteed mutation but not its Radioactive ×20
+> skew**, because Radioactive is a V1.6 mutation. Skewing towards something
+> that cannot be rolled is a line of code that does nothing.
 - Events never require a zone unlock to participate in — they are the main
   catch-up mechanism for new players and the main reason to stay logged in.
 - Countdown notification at 60 s, 30 s, 10 s with escalating audio.

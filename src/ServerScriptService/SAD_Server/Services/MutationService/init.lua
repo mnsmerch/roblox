@@ -98,7 +98,7 @@ end
 	Returns (mutationId, secondMutationId?). `none` is a real result, not a nil.
 ]]
 function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: Random?,
-	zoneId: string?): (string, string?)
+	zoneId: string?, guaranteed: boolean?): (string, string?)
 	local generatorToUse = generator or rng
 
 	local weights = MutationConfig.RollableWeights()
@@ -126,6 +126,22 @@ function MutationService.RollIn(mutLuck: number, weatherId: string?, generator: 
 	end
 
 	weights = RNG.ApplyLuck(weights, mutPowers or MutationConfig.MutPowers(), mutLuck)
+
+	--[[
+		A guaranteed mutation (Step 18's meteor crater) removes `none` from the
+		pool rather than re-rolling until it misses. Re-rolling would keep the
+		relative odds of the mutations but is unbounded; removing the option
+		gives the same distribution in one pick.
+	]]
+	if guaranteed then
+		local mutatedOnly = {}
+		for id, weight in weights do
+			if id ~= "none" then
+				mutatedOnly[id] = weight
+			end
+		end
+		weights = mutatedOnly
+	end
 
 	local primary = RNG.WeightedPick(weights, generatorToUse) or "none"
 	if primary == "none" then
@@ -158,12 +174,14 @@ end
 
 --- `zoneId` is where the EGG came from, not where the player is standing:
 --- a Frozen Valley egg carries the Valley's weather boost home with it.
-function MutationService.Roll(player: Player, zoneId: string?): (string, string?)
+function MutationService.Roll(player: Player, zoneId: string?,
+	guaranteed: boolean?): (string, string?)
 	return MutationService.RollIn(
 		MutationService.ComputeMutLuck(player),
 		currentWeather,
 		nil,
-		zoneId
+		zoneId,
+		guaranteed
 	)
 end
 

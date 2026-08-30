@@ -214,11 +214,25 @@ end
 	for one number.
 ]]
 function NestService.RespawnMultiplier(): number
-	if not WeatherService then
-		return 1
+	local multiplier = 1
+	if WeatherService then
+		multiplier *= WeatherService.EffectOf("NestRespawnMult", 1)
 	end
-	return WeatherService.EffectOf("NestRespawnMult", 1)
+	--[[
+		Events multiply on top of weather rather than replacing it: a Nest
+		Frenzy during a Rainstorm should be the fastest respawn in the game,
+		and "whichever is lower wins" would silently throw one of them away.
+	]]
+	multiplier *= NestService.EventRespawnMultiplier
+	return multiplier
 end
+
+--[[
+	Set by EventService's Nest Frenzy handler and reset when it ends. A plain
+	field rather than a service lookup, because NestService loads before
+	EventService and the dependency would only ever run one way.
+]]
+NestService.EventRespawnMultiplier = 1
 
 local function tickRespawns()
 	local now = os.clock()

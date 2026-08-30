@@ -417,6 +417,73 @@ end
 
 -- ═══ Entry points ══════════════════════════════════════════════════════════
 
+--[[
+	Rule 11: WeatherConfig and MutationConfig.WeatherModifiers name the same
+	weathers.
+
+	Two tables describe one thing here on purpose - weights and durations in
+	one, mutation multipliers in the other, because a weather's mutation
+	weights belong with the mutations. That is only safe while something checks
+	they agree. A weather in one and not the other is either a weather that
+	rolls and does nothing, or a modifier table nothing can reach.
+]]
+local function ruleWeatherTables(report, c)
+	if not c.Weather then
+		table.insert(report.skipped, OPTIONAL_CONFIGS.Weather)
+		return
+	end
+
+	local checked = 0
+	for id, entry in c.Weather.Weathers do
+		if not entry.InV1 then
+			continue
+		end
+		checked += 1
+
+		if c.Mutation.WeatherModifiers[id] == nil then
+			fail(report, "R11", "weather '%s' has no entry in MutationConfig.WeatherModifiers", id)
+		end
+		if entry.Weight <= 0 then
+			fail(report, "R11", "weather '%s' has weight %d and can never roll", id, entry.Weight)
+		end
+		if id ~= "clear" and entry.DurationSecs <= 0 then
+			fail(report, "R11", "weather '%s' has no duration", id)
+		end
+	end
+
+	for id in c.Mutation.WeatherModifiers do
+		local entry = c.Weather.Weathers[id]
+		if not entry then
+			fail(report, "R11", "MutationConfig.WeatherModifiers has '%s', which is not a weather", id)
+		elseif not entry.InV1 then
+			fail(report, "R11", "weather '%s' has modifiers but is not in V1", id)
+		end
+	end
+
+	--[[
+		A cap at or below 1 would mean no weather could shift anything, which
+		is a whole system quietly switched off.
+	]]
+	if c.Mutation.WeatherModifierCap <= 1 then
+		fail(report, "R11", "WeatherModifierCap is %.2f, so no weather can shift anything",
+			c.Mutation.WeatherModifierCap)
+	end
+
+	pass(report, "R11", "%d weather(s) validated against their mutation modifiers", checked)
+end
+
+--[[
+	The rule list.
+
+	`RULES` is asserted contiguous and all-functions immediately below. That is
+	not paranoia: a rule registered here whose function was never defined is a
+	`nil` in the middle of the array, and a nil in an array is not an error -
+	it is a hole that generalized iteration steps straight over. Rule 11 spent
+	a whole step in exactly that state, registered and never once running.
+
+	Same failure the Migrations chain was hardened against in Step 2, arriving
+	from the other direction.
+]]
 local RULES = {
 	ruleRarityWeightSums,
 	ruleMutationWeightSum,
@@ -431,6 +498,14 @@ local RULES = {
 	ruleWeatherTables,
 	ruleStructural,
 }
+
+--- Asserted at load, so a mis-registered rule cannot reach a running game.
+for index = 1, 12 do
+	assert(type(RULES[index]) == "function",
+		string.format("[SAD] ConfigValidator: rule #%d is %s, not a function - it is "
+			.. "registered in RULES but never defined", index, typeof(RULES[index])))
+end
+assert(RULES[13] == nil, "[SAD] ConfigValidator: RULES has more entries than the count asserted above")
 
 --[[
 	`configs` needs at minimum: Rarity, Mutation, Dino, Zone, Upgrade.
@@ -448,10 +523,29 @@ function ConfigValidator.Run(configs)
 		return report
 	end
 
-	for _, rule in RULES do
+	--[[
+		Every rule must SAY something - a pass, a skip, or a failure. A rule
+		that reports nothing has silently done nothing, which is how rule 11
+		spent a whole step registered but never given the config it reads.
+
+		Counted rather than inspected, because the rules append to shared lists
+		and the count is the only thing that cannot be faked by a rule that
+		merely looks busy.
+	]]
+	for index, rule in RULES do
+		local before = #report.checks + #report.skipped + #report.errors + #report.warnings
+
 		local ok, err = pcall(rule, report, configs)
 		if not ok then
 			fail(report, "R0", "a validation rule itself errored: %s", tostring(err))
+			continue
+		end
+
+		local after = #report.checks + #report.skipped + #report.errors + #report.warnings
+		if after == before then
+			fail(report, "R0",
+				"rule #%d ran but reported nothing - it is probably missing the config it reads",
+				index)
 		end
 	end
 
@@ -465,6 +559,33 @@ function ConfigValidator.RunDefault()
 	local function optional(name)
 		local child = parent:FindFirstChild(name)
 		return if child then require(child) else nil
+	end
+
+	--[[
+		The event handler modules, by name. Looked up in ServerScriptService and
+		only on the server: the client validates content too, and it has no
+		handlers folder - so there it returns nil and rule 8 skips rather than
+		failing on something that is not its business.
+	]]
+	local function eventHandlers()
+		local ok, found = pcall(function()
+			local services = game:GetService("ServerScriptService")
+				:FindFirstChild("SAD_Server")
+			local eventService = services and services:FindFirstChild("Services")
+				and services.Services:FindFirstChild("EventService")
+			return eventService and eventService:FindFirstChild("Handlers")
+		end)
+		if not ok or not found then
+			return nil
+		end
+
+		local names = {}
+		for _, module in found:GetChildren() do
+			if module:IsA("ModuleScript") then
+				names[module.Name] = true
+			end
+		end
+		return names
 	end
 
 	-- Assets are read through AssetBuilder's manifest, which is populated by
@@ -490,8 +611,23 @@ function ConfigValidator.RunDefault()
 			upgrade that does exactly nothing and nothing throws.
 		]]
 		UpgradeHandlers = require(parent.Parent.Modules.Stats).KindToField,
-		Assets = assets,
+		--[[
+			Rule 11's input (Step 17). A rule registered without the config it
+			reads skips forever and reports nothing - which is exactly what
+			happened to this line between Steps 17 and 18. `Run` now refuses a
+			rule that reports neither a pass nor a skip, so the same omission
+			cannot be silent twice.
+		]]
+		Weather = require(parent.WeatherConfig),
+		--[[
+			Rule 8's two inputs, reserved since Step 3 and filled in at Step 18.
+			EventHandlers is the folder of handler modules by name, so an event
+			naming a handler that does not exist fails at boot rather than
+			firing into nothing.
+		]]
 		Event = optional("EventConfig"),
+		EventHandlers = eventHandlers(),
+		Assets = assets,
 		Product = optional("ProductConfig"),
 	})
 end

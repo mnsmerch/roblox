@@ -82,6 +82,13 @@ local groundParams = RaycastParams.new()
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────
 
+--[[
+	Set by EventService's Nest Frenzy handler (guardians 20% slower) and reset
+	when it ends. A plain field rather than a service lookup: WildAIService
+	loads before EventService and the dependency only ever runs one way.
+]]
+WildAIService.EventSpeedMultiplier = 1
+
 local function flatDistance(a: Vector3, b: Vector3): number
 	local dx, dz = a.X - b.X, a.Z - b.Z
 	return math.sqrt(dx * dx + dz * dz)
@@ -278,7 +285,13 @@ function WildAIService.StartChase(player: Player, nest, token)
 		Model = model,
 		Position = spawnCFrame.Position,
 		Facing = spawnCFrame.LookVector,
-		BaseSpeed = ChaseConfig.SpeedFor(species and species.ChaseArchetype, thiefSpeed, zoneBonus),
+		--[[
+			The event multiplier is folded in at aggro, alongside the zone
+			bonus, so a Nest Frenzy guardian that spawns during the event stays
+			slow for the whole chase rather than speeding up when it ends.
+		]]
+		BaseSpeed = ChaseConfig.SpeedFor(species and species.ChaseArchetype, thiefSpeed, zoneBonus)
+			* WildAIService.EventSpeedMultiplier,
 		StartedAt = os.clock(),
 		--[[
 			Seeded to NOW, not to zero, so the first ability fires one full

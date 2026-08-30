@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 17 of 24 complete.** The sky does something. Awaiting the Studio Play tests before Step 18.
+## Status: **Step 18 of 24 complete.** Things happen to the whole server. Awaiting the Studio Play tests before Step 19.
 
 ## Completed
 
@@ -28,6 +28,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 15** — player raiding | The full raid state machine, shields, Vault, 109 more assertions |
 | 2026-08-30 | **Step 16** — notifications & announcements | Four severities, the queue, MessagingService, 87 more assertions |
 | 2026-08-30 | **Step 17** — weather | 4 weathers, the 8-minute roll, local Lighting, 85 more assertions |
+| 2026-08-30 | **Step 18** — server events | Scheduler, 4 handlers, contribution rewards, 98 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -50,7 +51,7 @@ accident. Updated at the end of every build step.
 | 15 | Player raiding | ✅ **done** |
 | 16 | Notifications & announcements | ✅ **done** |
 | 17 | Weather | ✅ **done** |
-| 18 | Server events | ⬜ |
+| 18 | Server events | ✅ **done** |
 | 19 | Quests, dailies, index | ⬜ |
 | 20 | Rebirth | ⬜ |
 | 21 | Purchases | ⬜ |
@@ -78,6 +79,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/ChaseConfig` | ModuleScript | 20 guardian archetypes, chase tuning, the guardian cap |
 | `Config/NotificationConfig` | ModuleScript | The 4 severities, queue limits, publish budget, payload sanitising |
 | `Config/WeatherConfig` | ModuleScript | 4 V1 weathers: weights, durations, non-mutation effects |
+| `Config/EventConfig` | ModuleScript | 4 V1 events: weights, durations, params, handler names |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -128,6 +130,8 @@ rebuilds this on every server start.
 | `Services/NotificationService` | ModuleScript | The one place a notification is created |
 | `Services/BroadcastService` | ModuleScript | **The only file that knows MessagingService exists** |
 | `Services/WeatherService` | ModuleScript | The roll, the countdown, and every effect that changes an outcome |
+| `Services/EventService` | ModuleScript | Scheduler, participation, scoreboards, rewards |
+| `Services/EventService/Handlers` | Folder | `MeteorImpact`, `Stampede`, `NestFrenzy`, `AmberRain` |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -360,6 +364,44 @@ survives because ConfigValidator rule 11 asserts they name the same weathers
 at boot.
 
 ```
+EventConfig.Events / Order / MinGapSecs / MaxGapSecs / CountdownSecs
+EventConfig.CountdownBeats / NoRepeatWithin / MinRewardIncomeSecs
+EventConfig.Get(eventId?) -> entry?
+EventConfig.RollableWeights(exclude?) -> { [id] = weight }
+EventConfig.ExclusionDepth() -> number     -- clamped to leave two choices
+EventConfig.Param(eventId, key, default) -> value
+
+EventService.Current() -> entry?
+EventService.EndsAt() -> os.time()
+EventService.Begin(eventId) -> ok, reason?    -- NOT Start; see deviation #61
+EventService.Stop(reason?)
+EventService.Score(player, points)
+EventService.GetScores() -> { { Player, Name, Score } }   sorted
+EventService.Roll() -> eventId?
+EventService.Started / Ended   Signals
+
+EggService.SpawnEventEgg(params, position) -> uid
+RarityConfig.TierAbove(rarityId, steps?) -> rarityId
+MutationService.RollIn(mutLuck, weatherId?, rng?, zoneId?, guaranteed?)
+NestService.EventRespawnMultiplier   -- a field, set and restored by a handler
+WildAIService.EventSpeedMultiplier   -- likewise
+HUDController.SetEventBanner(text?, priority?)
+HUDController.BannerPriority = { Weather = 1, Event = 2 }
+```
+
+**The handler pattern.** One ModuleScript per event in `EventService/Handlers`,
+named by `EventConfig`'s `Handler` field, returning `Start(ctx)` / optional
+`Tick(ctx, dt)` / `Stop(ctx)`. `ctx` carries the entry, its Params, a Trove
+that `Stop` must leave empty, `ctx.Get(name)` for other services, and
+`ctx.Score(player, points)` — the only way to record participation. A handler
+never touches profiles, currency or notifications.
+
+**Rewards are granted once, to whoever is still here.** Participation is keyed
+by the Player *object* and lives only in memory for one event, so a rejoin is
+a different key with no score. Rewards are paid and the table cleared in one
+step.
+
+```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
 WildAIService.GetActiveCount() -> number
@@ -581,11 +623,17 @@ current value, then on every change at or under that path. No polling anywhere.
 | 58 | Added `WeatherController` to the client roster (#18) | docs/09 §1's client list has no home for weather visuals, and docs/13 §Step 17 asks for them to be local: "the effects are server truth, only the visuals are local". Beyond trust, it bounds the hazard docs/13 names — Lighting driven from the server and left wrong is wrong for everyone until a restart; the same mistake locally corrects itself on rejoin. It also lets `Settings.LowGraphics` suppress fog per player, which a server-wide Lighting change cannot | docs/09 §1, docs/13 §Step 17 |
 | 59 | `MutationService.RollIn` and `.Roll` gained an optional `zoneId` | docs/04 §2's Blizzard is "Frozen ×25" everywhere and "Frozen Valley ×2" on top, so the roll has to know where the egg came from. Additive to a frozen API, like `params.Acquired` in Step 15. `IncubationService` passes the egg's `Origin`, not the player's position — a Valley egg carries the Valley's weather home with it | docs/04 §2 |
 | 60 | Added ConfigValidator **rule 11**: the two weather tables must agree | See #57. It also catches a modifier naming an unshipped mutation, and a weather with zero weight or no duration — each of which ships as a weather that silently does nothing | docs/11 §5 |
+| 61 | `EventService.Begin(eventId)`, not `.Start` | Exactly the collision `IncubationService` hit in Step 11 (deviation #31): `Start(app)` belongs to Bootstrap's lifecycle and Bootstrap looks for it by name, so the public function is the one that moves | — |
+| 62 | Added `EventConfig` as config module #13, and `EventService/Handlers` as a folder of modules | docs/13 §Step 18 specifies "`EventService` + `Handlers/`". Handlers are *discovered* rather than listed, so adding an event is a config entry plus a module and never an edit to the service — and ConfigValidator rule 8, written in Step 3 and skipped ever since, finally has its inputs | docs/09 §1, docs/13 §Step 18 |
+| 63 | The no-repeat-within-3 rule is **clamped to leave two choices** | With four events, excluding the last three leaves exactly one — a fixed rotation, not a weighted roll. `ExclusionDepth` relaxes to the published 3 as events are added, so this corrects itself rather than needing to be remembered | docs/04 §3 |
+| 64 | Meteor Impact ships its guaranteed mutation but not its Radioactive ×20 skew | Radioactive is a V1.6 mutation (docs/12). Skewing towards something that cannot be rolled is a line of code that does nothing — the skew arrives with the mutation it skews towards | docs/04 §3 |
+| 65 | Added `RarityConfig.TierAbove`, the counterpart to `TierBelow` | The crater upgrades what it drops by one tier, and V1.1's Great Migration upgrades a whole zone the same way. My first draft guarded with `RarityConfig.TierAbove and ...`, which would have made the upgrade a permanent silent no-op | docs/04 §3 |
+| 66 | `HUDController.SetEventBanner` gained a `priority` | Weather (Step 17) and events (Step 18) both want the one banner slot. An event outranks weather because it is rarer, shorter and has something to do about it; and only the holder may clear it, or weather's 1 Hz countdown would stamp over an event banner a fraction of a second after it appeared | docs/08 §2 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 64 source files and runs **3,049
-assertions** outside Roblox. Last run: **3,049 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 70 source files and runs **3,147
+assertions** outside Roblox. Last run: **3,147 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -601,6 +649,7 @@ assertions** outside Roblox. Last run: **3,049 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step18_spec` (98) | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report a result, rules 8 and 11 each driven to a real failure, and `TierAbove` against the zone weights the crater reads |
 | `step17_spec` (85) | The published weather table, the Clear share for V1 *and* for the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, Prime's chance proven flat while its count rises, and the two weather tables asserted to name the same set |
 | `step16_spec` (87) | All four severities against docs/08 §5, a strict and unique priority order, the takeover queue proven to drop rather than grow, unknown kinds falling back *downward*, payload sanitising against nesting, functions, NaN, infinity, numeric keys and over-long keys, sanitiser idempotence, and the `MessagingService` budget against both docs/09 §7.7 and Roblox's own documented floor |
 | `step15_spec` (85) | The hold formula against docs/03 §4.2 including V1's real ceiling and the V1.4 arithmetic, shield stacking proven un-permanent under fifty grants, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property with its rollback, vault slots, carry weight, and every published cooldown |
@@ -888,6 +937,38 @@ Bugs the specs caught before they shipped:
     V1 interaction that reaches it: ×25 → ×50 → trimmed to ×40. Implementing
     that reading gives the cap a job and makes it measurable: 34% Frozen in a
     blizzard elsewhere against 45% in the Valley, where uncapped would be 55%.
+
+29. **A validation rule spent an entire step registered and never running.**
+    Rule 11 was added to `ConfigValidator.RULES` in Step 17, but the script
+    that was supposed to define its function errored before writing — so
+    `RULES` contained a `nil` in the middle of the array. A nil in an array is
+    not an error; it is a hole that generalized iteration steps straight over.
+    No crash, no skip, no line in the boot report. The rule simply did not
+    exist, and Step 17's spec never touched the validator, so nothing caught
+    it for a whole step.
+
+    This is the Step 2 `#`-on-a-table-with-a-hole finding arriving from the
+    other direction. Two guards now, because one of them would have caught
+    only half of it:
+
+    - `RULES` asserts at load that every entry is a function and that the
+      count matches, so a registered-but-undefined rule cannot reach a
+      running game;
+    - `Run` fails any rule that reports neither a pass, a skip nor an error,
+      because a rule that produces no output has silently done nothing —
+      which is also how a rule missing the *config it reads* fails.
+
+    `tests/step18_spec.lua` asserts each rule id appears in the report by
+    name rather than counting them, since a count passes just as happily when
+    the wrong rule is the missing one.
+
+30. **Rule 8 had been skipping since Step 3.** Written then, with a
+    `c.EventHandlers` hook reserved for exactly this step and no way to supply
+    it. Now that `EventService/Handlers` exists, the validator resolves the
+    folder and rule 8 fails boot on an event naming a handler that is not
+    there. Worth noting alongside #29: of the eleven rules, two were
+    effectively decorative until this step, and only one of them was
+    decorative *on purpose*.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need
