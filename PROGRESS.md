@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 10 of 24 complete.** The core loop closes. Awaiting the Studio Play test before Step 11.
+## Status: **Step 11 of 24 complete.** All three reveals land. Awaiting the Studio Play test before Step 12.
 
 ## Completed
 
@@ -21,6 +21,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 8** — egg pickup & carrying | Rarity roll, carry tokens, loose eggs, 96 more assertions |
 | 2026-08-30 | **Step 9** — guardian AI & the chase | 20 archetypes, zone difficulty curve, 274 more assertions |
 | 2026-08-30 | **Step 10** — safe zone & deposit | The loop closes: steal → chase → keep it. 31 more assertions |
+| 2026-08-30 | **Step 11** — incubation & hatching | Species + mutation rolls, incubator pads, 298 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -36,7 +37,7 @@ accident. Updated at the end of every build step.
 | 8 | Egg pickup & carrying | ✅ **done** |
 | 9 | Guardian AI & the chase | ✅ **done** |
 | 10 | Safe zone & deposit | ✅ **done** |
-| 11 | Incubation & hatching | ⬜ |
+| 11 | Incubation & hatching | ✅ **done** |
 | 12 | Placement & income | ⬜ |
 | 13 | Upgrades & shop | ⬜ |
 | 14 | Zones & teleports | ⬜ |
@@ -107,6 +108,33 @@ rebuilds this on every server start.
 | `Services/SecurityService` | ModuleScript | Rate-limit records, movement plausibility, distance checks |
 | `Services/EggService` | ModuleScript | Pickup, rarity roll, carry tokens, carry weight, loose eggs, speed modifiers |
 | `Services/WildAIService` | ModuleScript | Guardian spawn, chase decisions, abilities, catching, de-aggro |
+| `Services/MutationService` | ModuleScript | Mutation rolls, weather modifiers, MutLuck, the Prime rule |
+| `Services/DinosaurService` | ModuleScript | Species rolls, profile entries, income and sell value |
+| `Services/IncubationService` | ModuleScript | Incubator timers, physical pads, hatch resolution |
+
+```
+MutationService.Roll(player) -> mutation, mutation2?
+MutationService.RollIn(mutLuck, weatherId, rng?) -> mutation, mutation2?   -- pure
+MutationService.MutLuckFrom(data) -> number                                -- pure
+MutationService.SetWeather(weatherId)          -- Step 17 drives this
+
+DinosaurService.RollSpecies(zoneId, rarity, rng?) -> speciesId?
+DinosaurService.Create(player, params) -> uid?, entry?, reason?
+DinosaurService.IncomeOf(entry, data) -> number      -- the master formula
+DinosaurService.SellValueOf(entry) -> fossils, dna
+DinosaurService.DisplayNameOf(entry) -> string
+DinosaurService.GetStorageUsed / GetStorageCap
+
+IncubationService.BeginIncubation(player, eggUid, slotIndex?) -> ok, reason?
+IncubationService.Claim(player, slotIndex) -> ok, reason?
+IncubationService.AutoStart(player) -> started
+IncubationService.DurationFor(data, rarity) -> seconds
+IncubationService.Hatched  Signal(player, uid, entry, odds)
+```
+
+**Incubators are physical.** The pads built in Step 6 carry prompts that fill,
+count down, and say HATCH — FTUE beats 7 and 8 verbatim, and the reveal works
+before any menu exists.
 
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
@@ -294,11 +322,13 @@ current value, then on every change at or under that path. No polling anywhere.
 | 28 | Guardian archetypes carry `CanGuard`; swimmers and apex tiers are excluded | A Plesiosaurus guarding a land nest cannot leave water and would stand motionless beside it. That is not a chase, it is a statue, and nothing throws | docs/03 §3 |
 | 29 | Added `GameConfig.EggStorageCap` (50) | docs/10 bounded `Dinos` at 235 entries but never bounded `Eggs`. An unbounded table grows until a DataStore write fails — the worst failure mode, arriving late and looking like nothing | docs/10 §2 |
 | 30 | docs/00's loop diagram amended: the chase resolves by **escape**, then you return home to bank | Measured: the 250-stud leash fires before the gate for ~92 % of park-to-zone angles. Guardians chasing across the map would be expensive and would make the leash dead code. The gate stays decisive for **player raids** | docs/00 §2, docs/03 §1.4 |
+| 31 | `IncubationService.BeginIncubation`, not `.Start` | Every service's `Start(app)` belongs to Bootstrap's lifecycle. One function cannot be both the lifecycle hook and the public API | — |
+| 32 | docs/05's worked income example corrected: **34,962** F/s, not 44,747 | It labelled its Feeding Trough multiplier "L8 (×2.1)", but §5 of the same document defines that track as +8 %/level — L8 is ×1.64 and ×2.1 would be L13. The example could not be reproduced from its own table, and its stated total was also 20 off its own arithmetic | docs/05 §2 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 44 source files and runs **2,225
-assertions** outside Roblox. Last run: **2,225 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 47 source files and runs **2,523
+assertions** outside Roblox. Last run: **2,523 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -312,6 +342,7 @@ assertions** outside Roblox. Last run: **2,225 passed, 0 failed.**
 | `step8_spec` (96) | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, roll distributions, the luck tail guard |
 | `step9_spec` (274) | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
+| `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 
 Bugs the specs caught before they shipped:
 
@@ -380,6 +411,16 @@ Bugs the specs caught before they shipped:
     Teleport Obelisk, and docs/08 puts a PARK button on the bottom bar. With
     both, the loop is **23 seconds**. Step 14 is therefore load-bearing for the
     game's tempo, not a convenience, and docs/00 now says so.
+
+12. **A documented example the code could not reproduce.** Asserting docs/05's
+    worked income calculation against the implementation failed: the example
+    used a Feeding Trough multiplier of ×2.1 while labelling it L8, but the
+    upgrade track in the same document gives L8 = ×1.64. Both the label and the
+    stated total were wrong. This is the kind of error that quietly erodes
+    trust in an economy document, because every number in it looks equally
+    authoritative — the spec now pins the example *and* the multiplier it
+    depends on, so changing the track fails here rather than silently
+    invalidating the doc.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

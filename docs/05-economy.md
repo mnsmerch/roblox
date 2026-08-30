@@ -38,14 +38,19 @@ Park total = sum over all **placed** dinosaurs. Stored dinosaurs earn nothing �
 this is what makes placement slots the core sink.
 
 **Worked example.** A rebirth-6 player with a Star-3 Golden Mythic Emberback
-Spinosaurus (SF 1.20), Feeding Trough L8 (×2.1), Steel enclosure (×1.25), no
-gamepass, clear weather:
+Spinosaurus (SF 1.20), Feeding Trough **L8 (×1.64)**, Steel enclosure (×1.25),
+no gamepass, clear weather:
 
 ```
-2200 × 1.20 × 2 × (1+0.35×2) × (1+0.15×6) × 2.1 × 1.25 × 1.0 × 1.0
-= 2200 × 1.20 × 2 × 1.70 × 1.90 × 2.1 × 1.25
-= 44,747 Fossils/sec
+2200 × 1.20 × 2 × (1+0.35×2) × (1+0.15×6) × 1.64 × 1.25 × 1.0 × 1.0
+= 2200 × 1.20 × 2 × 1.70 × 1.90 × 1.64 × 1.25
+= 34,962 Fossils/sec
 ```
+
+> An earlier draft of this example wrote "Feeding Trough L8 (×2.1)". The track
+> in §5 is +8 % per level, so L8 is ×1.64 and ×2.1 would be L13 — the example
+> could not be reproduced from the table in the same document. Asserted against
+> the implementation in `tests/step11_spec.lua`.
 
 That one dinosaur out-earns an entire early park by ~4 orders of magnitude,
 which is exactly the feeling we want when a Mythic hatches.

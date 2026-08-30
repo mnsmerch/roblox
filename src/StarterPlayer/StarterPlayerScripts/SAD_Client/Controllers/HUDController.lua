@@ -31,6 +31,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
+local RarityConfig = require(Shared.Config.RarityConfig)
 local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
 
@@ -52,6 +53,8 @@ local carryPanel
 local chaseBanner, chaseVignette
 local flashPanel
 local flashToken = 0
+local hatchPanel
+local hatchToken = 0
 local compass, eventBanner
 local railToggle
 
@@ -368,6 +371,74 @@ local function buildFlash()
 	flashPanel.Label = label
 end
 
+--[[
+	The hatch reveal.
+
+	Three lines because there are three reveals, and they are what the entire
+	loop exists to deliver: what it is, what mutated it, and how unlikely that
+	was. The odds line is the part players screenshot, so it is rendered large
+	and read from the same weight tables the roll actually used.
+
+	Step 16 replaces this with the full takeover treatment - camera cut, sound
+	sting, cross-server broadcast. This is the honest version of it.
+]]
+local function buildHatch()
+	local title = Create("TextLabel", {
+		Name = "Title",
+		Size = UDim2.new(1, -Theme.Space.XL, 0, 40),
+		Position = UDim2.fromOffset(Theme.Space.L, 14),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Display,
+		TextSize = Theme.TextSize.Display,
+		TextColor3 = Theme.Color.Text,
+		TextScaled = true,
+		Text = "",
+		ZIndex = Theme.Layer.Takeover + 1,
+	})
+
+	local subtitle = Create("TextLabel", {
+		Name = "Subtitle",
+		Size = UDim2.new(1, -Theme.Space.XL, 0, 24),
+		Position = UDim2.fromOffset(Theme.Space.L, 58),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Bold,
+		TextSize = Theme.TextSize.Label,
+		TextColor3 = Theme.Color.TextMuted,
+		Text = "",
+		ZIndex = Theme.Layer.Takeover + 1,
+	})
+
+	local odds = Create("TextLabel", {
+		Name = "Odds",
+		Size = UDim2.new(1, -Theme.Space.XL, 0, 30),
+		Position = UDim2.fromOffset(Theme.Space.L, 86),
+		BackgroundTransparency = 1,
+		Font = Theme.Font.Display,
+		TextSize = Theme.TextSize.Heading,
+		TextColor3 = Theme.Color.Accent,
+		Text = "",
+		ZIndex = Theme.Layer.Takeover + 1,
+	})
+
+	hatchPanel = Widgets.Panel({
+		Name = "HatchReveal",
+		Size = UDim2.new(0, 480, 0, 130),
+		Position = UDim2.fromScale(0.5, 0.4),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Color = Theme.Color.Backdrop,
+		Transparency = 0.02,
+		StrokeColor = Theme.Color.Accent,
+		Visible = false,
+		ZIndex = Theme.Layer.Takeover,
+		Children = { title, subtitle, odds },
+		Parent = UIController.Layer("takeover"),
+	})
+
+	hatchPanel.Title = title
+	hatchPanel.Subtitle = subtitle
+	hatchPanel.Odds = odds
+end
+
 local function buildRailToggle()
 	-- Below RailCollapseWidth the left rail folds behind one button
 	-- (docs/08 §4). Four extra icons is exactly what a 5.5" screen cannot
@@ -568,6 +639,55 @@ function HUDController.Flash(text: string, color: Color3?, duration: number?)
 	end)
 end
 
+--[[
+	Shows a hatch result. `result` is the HatchResult payload.
+
+	Rarer hatches linger longer - a Common should not hold the screen as long as
+	a Void Titan Rex, and the duration is part of how the tier reads.
+]]
+function HUDController.ShowHatch(result)
+	if type(result) ~= "table" then
+		return
+	end
+
+	hatchToken += 1
+	local token = hatchToken
+
+	local color = RarityConfig.GetColor(result.Rarity)
+	local tier = RarityConfig.Tiers[result.Rarity]
+	local rank = tier and tier.Rank or 1
+
+	hatchPanel.Visible = true
+	hatchPanel.Title.Text = string.upper(result.DisplayName or "?")
+	hatchPanel.Title.TextColor3 = color
+
+	local parts = { tier and string.upper(tier.DisplayName) or "?" }
+	if result.Mutation2 then
+		table.insert(parts, "PRIME")
+	end
+	if result.IncomePerSec then
+		table.insert(parts, Format.Number(result.IncomePerSec) .. " Fossils/sec")
+	end
+	hatchPanel.Subtitle.Text = table.concat(parts, "  ·  ")
+
+	-- The mutation's odds beat the rarity's when there is one: a Galaxy
+	-- Compsognathus is a rarer event than the Compsognathus was.
+	hatchPanel.Odds.Text = result.MutationOdds or result.Odds or ""
+	hatchPanel.Odds.TextColor3 = color
+
+	local stroke = hatchPanel:FindFirstChildOfClass("UIStroke")
+	if stroke then
+		stroke.Color = color
+	end
+
+	local duration = 2.5 + math.min(rank, 9) * 0.4
+	task.delay(duration, function()
+		if hatchToken == token then
+			hatchPanel.Visible = false
+		end
+	end)
+end
+
 function HUDController.SetCompass(text: string?)
 	compass.Text = text or ""
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
@@ -604,6 +724,7 @@ function HUDController.Init(app)
 	buildCarryPanel()
 	buildChase()
 	buildFlash()
+	buildHatch()
 
 	Log.info("HUDController", "HUD built")
 end

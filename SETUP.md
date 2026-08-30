@@ -335,6 +335,20 @@ No new files. Re-paste four:
 
 ---
 
+## Step 11 — incubation and hatching
+
+| Studio object | Source file |
+|---|---|
+| `Services/MutationService` | `src/.../MutationService/init.lua` *(new)* |
+| `Services/DinosaurService` | `src/.../DinosaurService/init.lua` *(new)* |
+| `Services/IncubationService` | `src/.../IncubationService/init.lua` *(new)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — hatch reveal)* |
+| `SAD_Client/Controllers/EggCarryController` | *(re-paste — `HatchResult`)* |
+
+All three services are ModuleScripts with no children.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1114,9 +1128,108 @@ loop from ~86 seconds to ~23.
 
 ---
 
+## Step 11 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][MutationService] Ready. Prime chance 1 in 2000, weather 'clear'
+[SAD/S][DinosaurService] Ready. 35 species available
+[SAD/S][IncubationService] Ready. Incubator pads are live
+```
+
+**2. The full loop, end to end.** Steal an egg, escape, run home through your
+gate. **SAFE!** — and it auto-starts in an incubator. Walk to the glowing blue
+pad: the prompt shows a live countdown (`30s` for a Common). When it reaches
+zero the prompt becomes **HATCH!**
+
+Hold it. A panel appears with three lines: the species, its tier and income, and
+the odds.
+
+**3. The timer is the tell.** Steal several eggs and look at the pads before
+hatching any. A 3-minute countdown is a Rare; 20 minutes is a Legendary. You
+know what you have before you know *what* you have — which is the point.
+
+**4. Force a rare hatch** rather than waiting for one:
+
+```lua
+local Inc = require(game.ServerScriptService.SAD_Server.Services.IncubationService)
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+
+PDS.Update(p, function(d)
+    d.Eggs.testegg = { Rarity = "titan", Origin = "frozen", AcquiredAt = os.time() }
+end, "test")
+Inc.BeginIncubation(p, "testegg", 1)
+
+-- Then skip the six-hour wait:
+PDS.Update(p, function(d) d.Incubators[1].HatchAt = os.time() - 1 end, "test")
+print(Inc.Claim(p, 1))
+```
+
+A server-wide takeover banner fires and the reveal shows `1 IN 2,000,000`.
+
+**5. Offline timers.** Start a 3-minute Rare, then **stop the session**. Wait a
+minute in real time, Play again. The countdown has moved on — timers use
+`os.time()`, so an egg keeps cooking while you are away.
+
+**6. Mutations.** Force a hundred hatches and count:
+
+```lua
+local Mut = require(game.ServerScriptService.SAD_Server.Services.MutationService)
+local counts = {}
+for _ = 1, 10000 do
+    local m = Mut.RollIn(0, "clear")
+    counts[m] = (counts[m] or 0) + 1
+end
+for id, n in counts do print(id, n) end
+```
+
+About 80 % `none`, 12 % `golden`. Then try a storm — `Mut.RollIn(0, "thunderstorm")`
+takes electric from 1.5 % to roughly 28 %.
+
+**7. Storage refuses rather than destroys.**
+
+```lua
+PDS.Update(p, function(d)
+    for i = 1, 30 do
+        d.Dinos["filler" .. i] = { SpeciesId = "compsognathus", Rarity = "common", Stars = 1, Placed = false }
+    end
+end, "test")
+```
+
+Now hatch a ready egg. You get *Dinosaur storage full*, and the egg **stays in
+its incubator, still ready**. Nothing is lost.
+
+**8. Inspect what you hatched.**
+
+```lua
+local Dino = require(game.ServerScriptService.SAD_Server.Services.DinosaurService)
+local d = PDS.Get(p)
+for uid, entry in d.Dinos do
+    print(uid, Dino.DisplayNameOf(entry), entry.Rarity,
+        string.format("%.1f F/s", Dino.IncomeOf(entry, d)), entry.Locked and "LOCKED" or "")
+end
+```
+
+Legendary and above are **auto-locked on hatch** — that is the rule that stops
+the "I misclicked and sold my Titan" support ticket.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| No prompt on the incubator pads | `IncubationService` not pasted, or the plot has no `Incubators` folder |
+| Prompt says Incubate but nothing happens | No eggs in storage — bank one first |
+| Countdown frozen | Timers use `os.time()`; a frozen one means the 1 Hz refresh errored |
+| Hatch produces nothing | Dinosaur storage full — check Output for the alert |
+| `attempt to call a nil value (Start)` | `BeginIncubation` is the public API; `Start(app)` belongs to Bootstrap |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,225 assertions** without Studio:
+Syntax-checks every source file and runs **2,523 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1136,6 +1249,7 @@ Fetches the Luau CLI on first run.
 | `tests/step8_spec.lua` | The published carry-speed table line by line, multi-carry stacking, Strong Back, luck composition and caps, rarity roll distributions, and the luck tail guard |
 | `tests/step9_spec.lua` | Archetype table integrity, guardian eligibility, the escape guarantee, and a simulated straight-line chase for every archetype in Zone 1 and Zone 4 |
 | `tests/step10_spec.lua` | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
+| `tests/step11_spec.lua` | Mutation distributions against their published weights, Prime pairing rules and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, and the incubation ladder |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

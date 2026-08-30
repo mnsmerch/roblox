@@ -283,6 +283,23 @@ function EggCarryController.Start(app)
 		NotificationController takes this over with the full queue and
 		severities; until then a banner is better than silence.
 	]]
+	--[[
+		The end of an egg's story. Reveals two and three arrive together here,
+		and the camera shake scales with the tier so a Titan lands differently
+		from a Common.
+	]]
+	Net.On("HatchResult", function(result)
+		if type(result) ~= "table" then
+			return
+		end
+		HUDController.ShowHatch(result)
+
+		local rank = RarityConfig.RankOf(result.Rarity)
+		if rank >= 5 or result.Mutation2 then
+			CameraController.Shake(math.min(0.3 + rank * 0.08, 1), 0.8)
+		end
+	end)
+
 	Net.On("Notify", function(payload)
 		if type(payload) ~= "table" or not payload.Text then
 			return

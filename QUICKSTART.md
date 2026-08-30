@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 44 source files and runs **2,225 assertions**: the economy
+Syntax-checks all 47 source files and runs **2,523 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -146,9 +146,11 @@ top-left and five buttons along the bottom.
 | **The chase** | A dinosaur wakes, roars, and runs you down. Escape or trip over |
 | Zone difficulty | Frozen Valley guardians genuinely catch you; Jurassic Plains ones mostly do not |
 | **The loop closes** | Run home through your gate — SAFE! — and the egg is yours |
+| Incubation | Walk to a pad, watch the countdown — its length tells you the tier |
+| **The hatch** | Species, mutation and odds, all three revealed at once |
 
-**Not built yet:** hatching, income, upgrades, stealing from players.
-Steps 11–24. The bottom-bar buttons log `No screen registered` —
+**Not built yet:** placing dinosaurs, income, upgrades, stealing from players.
+Steps 12–24. The bottom-bar buttons log `No screen registered` —
 that warning is correct, the screens arrive in Step 13.
 
 ---
