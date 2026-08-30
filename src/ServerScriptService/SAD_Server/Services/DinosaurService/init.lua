@@ -16,6 +16,7 @@
 	API:
 		DinosaurService.RollSpecies(zoneId, rarity, rng?) -> speciesId?
 		DinosaurService.Create(player, params) -> uid?, entry?, reason?
+		    params.Acquired = "hatch" (default) | "steal" 
 		DinosaurService.IncomeOf(entry, data) -> number
 		DinosaurService.SellValueOf(entry) -> fossils, dna
 		DinosaurService.GetStorageUsed(player) -> number
@@ -343,6 +344,13 @@ end
 	Refuses when storage is full rather than overwriting or discarding, so the
 	blockage is visible and fixable (docs/06 §1). The caller decides what to do
 	about it - IncubationService leaves the egg in its incubator.
+
+	`params.Acquired` says HOW it arrived, defaulting to "hatch". A raid
+	(Step 15) passes "steal", which keeps it out of the DinosHatched stat and
+	preserves the original `params.HatchedAt` - a stolen dinosaur was not
+	hatched by its new owner, and it did not come into existence today. It
+	still counts for the Index, because owning a species is owning it however
+	you came by it.
 ]]
 function DinosaurService.Create(player: Player, params): (string?, any?, string?)
 	local data = PlayerDataService.Get(player)
@@ -369,7 +377,7 @@ function DinosaurService.Create(player: Player, params): (string?, any?, string?
 		Placed = false,
 		Locked = tier.AutoLock == true,
 		Favorite = false,
-		HatchedAt = os.time(),
+		HatchedAt = params.HatchedAt or os.time(),
 		Rerolls = 0,
 		Origin = params.Origin or "plains",
 	}
@@ -393,7 +401,9 @@ function DinosaurService.Create(player: Player, params): (string?, any?, string?
 	end
 
 	-- Personal bests, for the rebirth cache and the leaderboards.
-	data.Stats.DinosHatched += 1
+	if (params.Acquired or "hatch") == "hatch" then
+		data.Stats.DinosHatched += 1
+	end
 	if RarityConfig.RankOf(params.Rarity) > RarityConfig.RankOf(data.Stats.RarestRarity) then
 		data.Stats.RarestRarity = params.Rarity
 	end

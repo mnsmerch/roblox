@@ -84,6 +84,10 @@ local WITHHELD = {
 	RobuxSpent = "spend history; nothing on the client should render it",
 	LastSeen = "used only to compute offline income, server-side",
 	FirstJoinAt = "account age drives protection rules; server-side only",
+	StealCooldowns = "who you may raid is decided server-side; the prompt says why",
+	RevengeMarks = "same - the halved hold time is applied where it is checked",
+	RobbedAt = "raid history feeding the Mercy Shield; the shield itself replicates",
+	GlobalStealAt = "the 90-second raid cooldown; enforced where it is read",
 	BankedRate = "the rate the current banking interval accrues at; the client "
 		.. "renders the LIVE rate, which it derives from its own dinosaurs",
 }

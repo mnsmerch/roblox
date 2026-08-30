@@ -205,7 +205,21 @@ things they chose to display.
 8. Reach your gate → ownership transfers, dinosaur auto-places in a free slot,
    `StealCompleted` fires, both players get a notification.
 9. If the thief **disconnects while carrying**, the dinosaur returns to its
-   owner after a 30-second server-side grace timer. No dupes, no loss.
+   owner. No dupes, no loss.
+
+> **How that is guaranteed:** while carried, the dinosaur stays in the *owner's*
+> profile — it is simply taken off the grid and locked against sale, vaulting or
+> storage. The carry itself is a server-only token. So there is never a moment
+> when the dinosaur belongs to nobody, and a crash mid-carry leaves it with its
+> owner rather than deleting it. The published 30-second grace is a timer on
+> the returning animation, not on the ownership.
+>
+> The consequence, stated plainly: the **owner must be online** for a raid to
+> complete. If they leave mid-carry the raid voids and the dinosaur goes back —
+> which follows from §4.3's "offline parks are fully raid-immune", and does mean
+> a player can save a dinosaur by disconnecting. The alternative is editing an
+> unlocked profile from another session, which is exactly what ProfileStore's
+> session locking exists to prevent.
 
 ### 4.3 The rules that make this fair
 
@@ -253,6 +267,15 @@ Fossil purchases, none are gamepasses.
 `SecurityLevel` = sum of all defence levels ÷ 4, capped at 5, and feeds the raid
 hold time formula in §4.2.
 
+> **V1's ceiling is 7.5 s, not the 9 s §4.2 quotes.** Nine seconds needs
+> SecurityLevel 5, which needs 20 defence levels. V1 ships three tracks of five
+> — Fence, Guard Tower, Camera — so fifteen levels, SecurityLevel 3.75, and a
+> 7.5-second hold on a fully defended park. The missing five are Alarm Horn (3)
+> and Electric Fence (3), deferred to V1.4. `Stats.SecurityLevel` sums the
+> defence *board* rather than a fixed list, so those two tracks raise the
+> ceiling to the published 9 s the day they ship, with no code change.
+> `tests/step15_spec.lua` asserts both the V1 number and the V1.4 arithmetic.
+
 ---
 
 ## 6. Anti-exploit surface for stealing
@@ -268,6 +291,9 @@ detail in [09-tech-architecture.md](09-tech-architecture.md) §7.
 | Two clients claim the same egg | Egg has a server-side `ClaimedBy` field set inside a single-threaded claim function; second claim is rejected |
 | Dupe by leaving mid-carry | Carry state lives **only** on the server as a `CarryToken` and is never written to the profile; on disconnect the token is resolved (wild egg → nest, stolen dino → owner) before the profile releases. Because a carried egg was never in the profile, disconnecting mid-run cannot bank it |
 | Dupe by leaving mid-deposit | Deposit is a single atomic server function: remove token → append to profile → save flag. No client step in between |
+| Dupe by raiding and leaving | The dinosaur never leaves its owner's profile until the thief reaches their own gate, and it is locked against sale/vault/storage while carried. Disconnecting at any point returns it |
+| Owner sells the dinosaur mid-raid | `StealService.IsLocked` guards every owner-side mutation of a carried entry |
+| Teleport home while carrying | `ZoneService.RegisterBlocker` refuses the teleport — the same registry the chase uses |
 | Fake "I reached my gate" | Gate crossing is detected **server-side** by a `Region3`/`GetPartBoundsInBox` check on the server tick, never by a client remote |
 | Client-side rarity roll | Rarity is rolled on the server at pickup with `Random.new()` seeded per-server; the client is only *told* the result |
 | Editing the carried egg model | The model is cosmetic. It carries `EggUid`/`Rarity` attributes for display only; the server reads its own token and never the model |

@@ -75,7 +75,7 @@ ServerScriptService
         ├── IncubationService        timers, hatch resolution
         ├── DinosaurService          hatch rolls, ownership, place/store/sell/fuse
         ├── MutationService          mutation rolls, weather modifiers, reroll
-        ├── StealService             player raiding state machine, shields, insurance
+        ├── StealService             raid state machine, tagging, shields, insurance
         ├── WeatherService           weather selection + broadcast
         ├── EventService             server event scheduler + participation
         ├── QuestService             daily/weekly progress

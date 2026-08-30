@@ -63,6 +63,20 @@ local ProfileTemplate = {
 	-- ── Boosts & items ──────────────────────────────────────────────────────
 	Boosts = {}, -- [boostId] = expiry os.time()
 	Items = {}, -- [itemId] = count
+	--[[
+		Raiding bookkeeping. All four persist rather than living in memory
+		because every one of them is bypassed by rejoining if it does not:
+		a same-victim cooldown that resets on reconnect is not a cooldown.
+
+		Keys are userIds as STRINGS. A Lua table with sparse numeric keys does
+		not survive DataStore's JSON round trip intact, and a userId is never a
+		contiguous array index.
+	]]
+	StealCooldowns = {}, -- [tostring(victimUserId)] = os.time() it expires
+	RevengeMarks = {}, -- [tostring(thiefUserId)] = os.time() it expires
+	RobbedAt = {}, -- recent os.time() stamps, newest last; feeds the Mercy Shield
+	GlobalStealAt = 0, -- os.time() of the last completed raid
+
 	ShieldUntil = 0,
 	ShieldBankSecs = 0,
 

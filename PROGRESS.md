@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 14 of 24 complete.** The map closes up. Awaiting the Studio Play test before Step 15.
+## Status: **Step 15 of 24 complete.** Players can rob each other. Awaiting a **two-client** Studio test before Step 16.
 
 ## Completed
 
@@ -25,6 +25,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 12** — placement & income | Lazy bank, offline earnings, auto-placement, 57 more assertions |
 | 2026-08-30 | **Step 13** — upgrades & the shop | 14 tracks, shared `Stats`, three boards, 106 more assertions |
 | 2026-08-30 | **Step 14** — zones & teleports | Unlock gates, shrines, the Obelisk, 82 more assertions |
+| 2026-08-30 | **Step 15** — player raiding | The full raid state machine, shields, Vault, 109 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -44,7 +45,7 @@ accident. Updated at the end of every build step.
 | 12 | Placement & income | ✅ **done** |
 | 13 | Upgrades & shop | ✅ **done** |
 | 14 | Zones & teleports | ✅ **done** |
-| 15 | Player raiding | ⬜ |
+| 15 | Player raiding | ✅ **done** |
 | 16 | Notifications & announcements | ⬜ |
 | 17 | Weather | ⬜ |
 | 18 | Server events | ⬜ |
@@ -119,6 +120,7 @@ rebuilds this on every server start.
 | `Services/IncubationService` | ModuleScript | Incubator timers, physical pads, hatch resolution |
 | `Services/EconomyService` | ModuleScript | The lazy bank, collection, offline earnings, all currency movement |
 | `Services/UpgradeService` | ModuleScript | Pricing, Buy and Buy Max in one transaction, live effect application |
+| `Services/StealService` | ModuleScript | The raid state machine, tagging, shields, Vault, insurance |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -237,6 +239,37 @@ destination once both are true, so the first trip to any zone is always walked.
 **Teleports are refused mid-chase**, and that is the whole design of them —
 see deviation #43. `RegisterBlocker` is how Step 15 adds the raiding case in
 one line at its own call site.
+
+```
+StealService.IsCarrying(player) -> token?
+StealService.CanRaid(thief, ownerUserId) -> ok, reason?
+StealService.HoldSecondsFor(thief, ownerData, ownerUserId) -> seconds
+StealService.Begin(thief, ownerUserId, dinoUid) -> ok, reason?
+StealService.Cancel(thief, reason?)
+StealService.Tag(tagger, thiefUserId) -> ok, reason?
+StealService.IsLocked(ownerUserId, uid) -> boolean
+StealService.Vault(player, uid, slot) -> ok, reason?
+StealService.GrantShield(player, seconds, reason) -> until
+StealService.IsShielded(data, now?) -> boolean
+StealService.StealStarted / StealCompleted / StealFailed   Signals
+
+Stats.SecurityLevel(data) -> 0..5      -- defence board sum / 4
+Stats.RaidHoldSecs(data) -> seconds    -- 3 + SecurityLevel x 1.2
+
+ParkService.DinoRendered  Signal(owner, uid, model)
+DinosaurService.Create(player, params)  -- params.Acquired = "hatch" | "steal"
+```
+
+**The dinosaur never leaves its owner until the gate.** While carried it stays
+in the owner's profile — taken off the grid, and locked server-side against
+sale, vaulting and storage. The carry is a token in server memory only. So
+there is no moment when it belongs to nobody, and a crash mid-carry leaves it
+with its owner rather than deleting it.
+
+**The consequence, stated plainly:** the owner must be online for a raid to
+complete. If they leave mid-carry the raid voids. This follows from docs/03
+§4.3's "offline parks are fully raid-immune", and it does mean a player can
+save a dinosaur by disconnecting — see the note under Open questions.
 
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
@@ -443,11 +476,17 @@ current value, then on every change at or under that path. No polling anywhere.
 | 44 | The locked-gate barrier is **cosmetic**; a positional check is the real gate | A part cannot be solid for one player and passable for another, so a barrier that actually blocked would block everyone forever. The client hides the ones it has unlocked (a client-side Transparency does not replicate) and `ZoneService` walks a trespasser back out at 2 Hz. Both halves ship together, and the server half is the one that is authoritative | docs/02 §2.1 |
 | 45 | `ZoneService` is a submodule of `NestService`, not a service in the roster | docs/13 §Step 14 says "a small `ZoneService` inside `NestService`". It owns no loop of its own beyond the trespass sweep and works entirely on the world `NestService` built moments earlier, so `NestService` forwards `Init` and `Start` to it. Keeps the roster at the 24 docs/09 §2 publishes | docs/09 §1 |
 | 46 | docs/00's loop timing corrected: **21 s typical / 33 s furthest**, not 23 s | Step 10 projected 23 s before the destinations existed. Measured against the real ones, the projection had priced a typical nest rather than the walk to the far side of a 350-stud zone. Still inside the 45-second target at every nest in the game, and less than half the 86 s on foot | docs/00 §3 |
+| 47 | Added four raid fields to the profile (`StealCooldowns`, `RevengeMarks`, `RobbedAt`, `GlobalStealAt`) | Every one of them is bypassed by rejoining if it lives in memory: a same-victim cooldown that resets on reconnect is not a cooldown. Keys are userIds as **strings**, because a table with sparse numeric keys does not survive DataStore's JSON round trip. All four withheld from replication — who you may raid is a server decision, and the prompt already carries the reason | docs/10 §1 |
+| 48 | **A carried dinosaur stays in its owner's profile until the gate** | docs/03 §4.6 defers ownership to the gate and §4.9 promises no loss on disconnect; both fall out of this one choice. The alternative — remove at lift, re-add at the gate — has a window where the dinosaur exists only in server memory, and a crash there deletes it. This way the worst case is the owner keeps it, which is the direction an error should fall. Requires a server-side lock so the owner cannot sell it mid-raid | docs/03 §4.2, §6 |
+| 49 | An **owner who leaves mid-carry voids the raid** | There is no loaded profile to transfer from, and editing an unlocked profile from another session is exactly what ProfileStore's session locking prevents. Consistent with docs/03 §4.3 making offline parks fully raid-immune. Does mean disconnecting saves your dinosaur — recorded under Open questions rather than hidden | docs/03 §4.2 |
+| 50 | `DinosaurService.Create` gained `params.Acquired` and `params.HatchedAt` | A stolen dinosaur was counting as hatched: it inflated the thief's `DinosHatched` (a leaderboard stat), reset the dinosaur's age to today, and could end New Player Protection, whose condition is "until first Rare **hatch**". Additive to a frozen API, not a rename | docs/10 §1 |
+| 51 | No `RaidController`; raid UI lives in `HUDController` and `ParkController` | The alerts are banners and reveal panels, which `HUDController` already owns; hiding your own Steal prompts is a park-side visual, which `ParkController` already owns. Adding a controller for eleven message handlers would put raid code in three places instead of two | docs/09 §1 |
+| 52 | `SecurityLevel` sums the defence **board**, not a fixed list of three ids | So the V1.4 pass that adds Alarm Horn and Electric Fence raises the raid hold ceiling to its published 9 s with no code change — and so V1's real ceiling of 7.5 s is a fact about the content rather than a hardcoded number | docs/03 §5 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 55 source files and runs **2,768
-assertions** outside Roblox. Last run: **2,768 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 56 source files and runs **2,877
+assertions** outside Roblox. Last run: **2,877 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -463,6 +502,7 @@ assertions** outside Roblox. Last run: **2,768 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step15_spec` (85) | The hold formula against docs/03 §4.2 including V1's real ceiling and the V1.4 arithmetic, shield stacking proven un-permanent under fifty grants, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property with its rollback, vault slots, carry weight, and every published cooldown |
 | `step14_spec` (76) | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside the zone they travel to, zone-square clearance against the park ring, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim against the published income curve |
 | `step13_spec` (100) | Every price in the game against integrality, monotonicity and determinism; all 14 published max effects; `Stats.Of` against every single-field helper on three profiles; the Upgrades/Defences split asserted in both directions; Buy Max bounds and the never-negative rule; the retroactive-income guard; and docs/05 §5's 180-second constraint measured across a rebirth run |
 
@@ -655,6 +695,42 @@ Bugs the specs caught before they shipped:
     both analytically and by sampling all 24 plot centres, so a change to
     either ring's radius fails here rather than in someone's park.
 
+21. **The published raid hold ceiling is unreachable in V1.** docs/03 §4.2
+    says "3 s → 9 s at max security", and §5 defines SecurityLevel as the sum
+    of all defence levels ÷ 4, capped at 5. Nine seconds needs SecurityLevel 5,
+    which needs 20 defence levels. V1 ships three tracks of five — fifteen — so
+    a fully defended park holds a raider for **7.5 seconds, not 9**.
+
+    Not a bug in either place: the missing five levels are Alarm Horn and
+    Electric Fence, which docs/03 §5 lists and `UpgradeConfig` already defers
+    to V1.4. What was missing was anyone noticing the two documents describe
+    different content sets. `Stats.SecurityLevel` sums the defence *board*
+    rather than a fixed list of three ids, so the ceiling rises to 9 s the day
+    those tracks ship, and the spec asserts both the V1 number and the V1.4
+    arithmetic so it stops being a gap without anyone remembering it was one.
+
+22. **A stolen dinosaur was counting as a hatched one.** The raid transfer mints
+    the dinosaur into the thief's profile through `DinosaurService.Create`,
+    which increments `DinosHatched` and stamps `HatchedAt = os.time()`. So
+    every raid inflated a leaderboard stat, reset the dinosaur's age to today,
+    and could end the thief's New Player Protection — whose condition is
+    literally "until first Rare **hatch**". Three wrong things from one reused
+    function. `Create` now takes `params.Acquired`, additive to the frozen API.
+
+23. **Where a carried dinosaur lives decides whether raids can dupe.** The
+    obvious implementation removes it from the owner at lift and adds it to the
+    thief at the gate — and in between it exists only in server memory, so a
+    crash deletes it outright. Keeping it in the owner's profile until the gate
+    makes the worst case "the owner keeps their dinosaur", which is the
+    direction an error should fall, and makes docs/03 §4.9's no-loss promise
+    structural rather than a timer.
+
+    It creates a second problem that had to be solved with it: the owner can
+    still see the entry, so they could sell, vault or store it out from under a
+    raid in progress — and if the transfer then completed, that is a dupe. The
+    server-side `locked` registry is that guard, and it is checked in every
+    owner-side mutation path.
+
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need
 real geometry that the blockout does not have, and a blanket zone-wide slow
@@ -684,5 +760,21 @@ ProfileStore-dependent path. See the Studio test lists in SETUP.md.
    from the Creator Store? This determines whether Step 7 blocks on assets.
 4. **Team size and target launch date** — changes how aggressively V1 should be
    trimmed further.
+5. **Disconnecting saves your dinosaur, and that is a decision, not an
+   oversight.** A raid voids if the owner leaves mid-carry, because there is no
+   loaded profile to transfer from and writing to an unlocked one from another
+   session is what ProfileStore's locking exists to prevent. It follows from
+   docs/03 §4.3's "offline parks are fully raid-immune" — but it does mean an
+   attentive victim can alt-F4 out of any raid.
+
+   Three ways to close it if you want it closed, in increasing cost:
+   *(a)* accept it, on the grounds that it costs the victim their session and
+   their income while the thief loses only the attempt; *(b)* apply a short
+   leaving penalty — a lost shield, or a cooldown before their park earns
+   again; *(c)* transfer through a server-authoritative pending queue that
+   completes on the victim's next login, which is the only version that truly
+   closes it and the only one that can strand a dinosaur if the queue is ever
+   lost. I built (a) because it is the one the design documents already imply.
+   Worth a decision before launch rather than after the first complaint.
 
 Only #3 blocks anything, and not until Step 7.

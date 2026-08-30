@@ -63,7 +63,7 @@ local EXPECTED = {
 	"Rebirths", "ZonesUnlocked", "Shrines", "Upgrades", "Defences", "LuckNodes",
 	"Dinos", "Eggs", "Incubators",
 	"Index", "IndexMilestones",
-	"Boosts", "Items", "ShieldUntil", "ShieldBankSecs",
+	"Boosts", "Items", "StealCooldowns", "RevengeMarks", "RobbedAt", "GlobalStealAt", "ShieldUntil", "ShieldBankSecs",
 	"Daily", "Quests", "Tutorial",
 	"Gamepasses", "ProcessedReceipts", "RobuxSpent",
 	"Settings", "Stats",

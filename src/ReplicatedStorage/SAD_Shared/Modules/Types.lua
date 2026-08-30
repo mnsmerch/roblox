@@ -158,6 +158,10 @@ export type Profile = {
 
 	Boosts: Dict<number>, -- [boostId] = expiry os.time()
 	Items: Dict<number>,
+	StealCooldowns: Dict<number>,
+	RevengeMarks: Dict<number>,
+	RobbedAt: { number },
+	GlobalStealAt: number,
 	ShieldUntil: number,
 	ShieldBankSecs: number,
 

@@ -23,6 +23,7 @@
 		HUDController.SetChaseMode(active)          -- Step 9 strips the HUD
 		HUDController.SetCompass(text?)             -- Step 6
 		HUDController.SetEventBanner(text?)         -- Step 18
+		HUDController.OnStealAlert(info)            -- Step 15 raid alerts
 
 	Depends on: UIController, StateController, InputController, Theme, Create,
 	            Widgets, Format.
@@ -34,6 +35,7 @@ local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local RarityConfig = require(Shared.Config.RarityConfig)
 local Format = require(Shared.Modules.Format)
 local Log = require(Shared.Modules.Log)
+local Net = require(Shared.Modules.Net)
 
 local UI = script.Parent.Parent.UI
 local Theme = require(UI.Theme)
@@ -707,6 +709,91 @@ function HUDController.ShowHatch(result)
 	})
 end
 
+--[[
+	Raid alerts (docs/03 §4). Every one of these is a moment where the player
+	needs to know something RIGHT NOW - someone is in your park, someone has
+	your Mythic, you have been tagged - so they all land on the flash banner or
+	the reveal panel rather than in a menu.
+
+	Purely a renderer: every decision behind these has already been made and
+	enforced on the server, and nothing here is sent back.
+]]
+local STEAL_ALERTS = {
+	intruder = function(info)
+		HUDController.Flash(string.upper(info.ThiefName or "SOMEONE") .. " IS IN YOUR PARK!",
+			Theme.Color.Warning, 3)
+	end,
+	raidStarted = function(info)
+		HUDController.Flash(string.format("%s IS TAKING YOUR %s!",
+			string.upper(info.ThiefName or "SOMEONE"), string.upper(info.DinoName or "DINOSAUR")),
+			Theme.Color.Danger, math.max(3, info.Seconds or 3))
+	end,
+	lifted = function(info)
+		HUDController.Flash(string.format("TAG %s TO GET IT BACK",
+			string.upper(info.ThiefName or "THEM")), Theme.Color.Danger, 4)
+	end,
+	carrying = function(info)
+		HUDController.SetChaseMode(true)
+		HUDController.Flash("GET TO YOUR GATE", Theme.Color.Accent, 3)
+	end,
+	tagged = function(info)
+		HUDController.SetChaseMode(false)
+		HUDController.Flash(if info.Source == "tower" then "GUARD TOWER GOT YOU" else "TAGGED!",
+			Theme.Color.Danger, 3)
+	end,
+	towerFired = function(info)
+		HUDController.Flash("YOUR GUARD TOWER TAGGED " .. string.upper(info.ThiefName or "THEM"),
+			Theme.Color.Success, 3)
+	end,
+	returned = function(info)
+		HUDController.Flash(string.upper(info.DinoName or "IT") .. " CAME HOME",
+			Theme.Color.Success, 3)
+	end,
+	stolen = function(info)
+		HUDController.SetChaseMode(false)
+		HUDController.ShowReveal({
+			Title = "STOLEN",
+			Subtitle = string.upper(info.DinoName or ""),
+			Headline = "IT IS YOURS",
+			Color = RarityConfig.GetColor(info.Rarity or "common"),
+			Duration = 3,
+		})
+	end,
+	robbed = function(info)
+		HUDController.ShowReveal({
+			Title = "ROBBED",
+			Subtitle = string.format("%s took your %s",
+				info.ThiefName or "Someone", info.DinoName or "dinosaur"),
+			Headline = "+" .. Format.Number(info.Insurance or 0) .. " INSURANCE",
+			Color = Theme.Color.Danger,
+			Duration = 4,
+		})
+	end,
+	mercy = function(info)
+		HUDController.Flash(string.format("MERCY SHIELD  ·  %s", Format.Time(info.Seconds or 0)),
+			Theme.Color.Shield, 4)
+	end,
+	failed = function(info)
+		HUDController.SetChaseMode(false)
+		HUDController.Flash(string.upper(info.Reason or "IT GOT AWAY"), Theme.Color.Danger, 3)
+	end,
+	refused = function(info)
+		HUDController.Flash(string.upper(info.Reason or "NOT NOW"), Theme.Color.TextMuted, 2)
+	end,
+	holdStarted = function() end,
+	holdEnded = function() end,
+}
+
+function HUDController.OnStealAlert(info)
+	if type(info) ~= "table" then
+		return
+	end
+	local handler = STEAL_ALERTS[info.Kind]
+	if handler then
+		handler(info)
+	end
+end
+
 function HUDController.SetCompass(text: string?)
 	compass.Text = text or ""
 	compass.Visible = text ~= nil and UIController.Breakpoint ~= "compact"
@@ -750,6 +837,8 @@ end
 
 function HUDController.Start(app)
 	bindState()
+
+	Net.On("StealAlert", HUDController.OnStealAlert)
 
 	UIController.BreakpointChanged:Connect(applyBreakpoint)
 	applyBreakpoint(UIController.Breakpoint, UIController.LogicalWidth)

@@ -35,6 +35,7 @@
 		ParkService.PlotAssigned    Signal(player, plot)
 		ParkService.PlotReleased    Signal(player, plot)
 		ParkService.ParkEntered     Signal(player, ownerUserId, plot)
+		ParkService.DinoRendered    Signal(owner, uid, model)
 		ParkService.ParkExited      Signal(player, ownerUserId, plot)
 
 	Depends on: ParkConfig, PlotBuilder, PlayerDataService, Log, Signal.
@@ -63,6 +64,9 @@ ParkService.PlotAssigned = Signal.new()
 ParkService.PlotReleased = Signal.new()
 ParkService.ParkEntered = Signal.new()
 ParkService.ParkExited = Signal.new()
+--- Fired for each dinosaur model as it is rendered, so services can attach
+--- behaviour to it. StealService uses it for the raid prompt.
+ParkService.DinoRendered = Signal.new()
 
 local plots: { Model } = {}
 local origins: { CFrame } = {}
@@ -305,6 +309,7 @@ function ParkService.RefreshDinos(player: Player)
 
 		model.Parent = dinoFolder
 		existing[uid] = model
+		ParkService.DinoRendered:Fire(player, uid, model)
 	end
 
 	-- Anything no longer placed goes away.

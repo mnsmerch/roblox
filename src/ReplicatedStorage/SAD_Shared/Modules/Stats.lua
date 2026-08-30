@@ -113,10 +113,19 @@ function Stats.Of(data)
 		CarryPenaltyMult = effect(data, "strongBack"),
 		EggCapacity = effect(data, "eggPouch"),
 
-		-- Defence (read by StealService in Step 15)
+		-- Defence
 		StealHoldBonus = effect(data, "fence"),
 		TowerCooldown = effect(data, "guardTower"),
 		AlertRange = effect(data, "camera"),
+
+		--[[
+			Not a track: the aggregate docs/03 §5 defines as
+			"sum of all defence levels / 4, capped at 5", which docs/03 §4.2
+			feeds into the raid hold time. Derived here so the three tracks
+			above and the number they add up to cannot disagree.
+		]]
+		SecurityLevel = Stats.SecurityLevel(data),
+		RaidHoldSecs = Stats.RaidHoldSecs(data),
 	}
 end
 
@@ -186,6 +195,27 @@ end
 
 function Stats.AlertRange(data): number
 	return effect(data, "camera")
+end
+
+--[[
+	docs/03 §5: "SecurityLevel = sum of all defence levels / 4, capped at 5".
+
+	Summed from the DEFENCE BOARD rather than from a hardcoded list of three
+	track ids, so the V1.4 pass that adds Alarm Horn and Electric Fence raises
+	it without touching this function - which is also why V1's ceiling is 3.75
+	rather than 5, with only fifteen defence levels in the game to sum.
+]]
+function Stats.SecurityLevel(data): number
+	local total = 0
+	for _, entry in UpgradeConfig.ForBoard("defence") do
+		total += UpgradeConfig.LevelIn(data, entry.Id)
+	end
+	return math.min(total / 4, 5)
+end
+
+--- Seconds a raider must hold to lift a dinosaur from this park (docs/03 §4.2).
+function Stats.RaidHoldSecs(data): number
+	return GameConfig.RaidHoldBase + Stats.SecurityLevel(data) * GameConfig.RaidHoldPerSecurity
 end
 
 --[[

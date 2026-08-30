@@ -171,6 +171,33 @@ local function tickFloaters()
 	)
 end
 
+--[[
+	Hides the raid prompt on your OWN dinosaurs.
+
+	`Enabled` written on the client is not replicated, so this is per-viewer:
+	everyone else still sees a Steal prompt on your park. Cosmetic only -
+	StealService refuses a raid on your own park regardless, so this stops the
+	prompt reading as an offer rather than stopping anything.
+
+	Same shape as the gate barriers in Step 14: a client-side property change
+	that makes the world describe this player's own situation, sitting over a
+	server check that is the actual rule.
+]]
+local function hideOwnRaidPrompts()
+	local runtime = Workspace:FindFirstChild("SAD_Runtime")
+	local folder = runtime and runtime:FindFirstChild("ParkDinos")
+	if not folder then
+		return
+	end
+
+	for _, descendant in folder:GetDescendants() do
+		if descendant:IsA("ProximityPrompt")
+			and descendant:GetAttribute("RaidOwnerUserId") == player.UserId then
+			descendant.Enabled = false
+		end
+	end
+end
+
 -- ── Lifecycle ───────────────────────────────────────────────────────────────
 
 function ParkController.Init(app)
@@ -179,6 +206,20 @@ function ParkController.Init(app)
 end
 
 function ParkController.Start(app)
+	--[[
+		Park models are rebuilt whenever placement changes, so the prompts are
+		new instances each time and DescendantAdded is the only way to catch
+		them all - a one-off sweep at boot would miss every dinosaur placed
+		afterwards.
+	]]
+	Workspace.DescendantAdded:Connect(function(descendant)
+		if descendant:IsA("ProximityPrompt")
+			and descendant:GetAttribute("RaidOwnerUserId") == player.UserId then
+			descendant.Enabled = false
+		end
+	end)
+	hideOwnRaidPrompts()
+
 	task.spawn(function()
 		while true do
 			task.wait(FLOATER_INTERVAL)

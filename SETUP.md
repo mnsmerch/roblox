@@ -425,6 +425,29 @@ what docs/13 §Step 14 specifies.
 
 ---
 
+## Step 15 — player raiding
+
+| Studio object | Source file |
+|---|---|
+| `Services/StealService` | `src/.../Services/StealService/init.lua` *(new)* |
+| `SAD_Shared/Config/GameConfig` | *(re-paste — the raid and shield constants)* |
+| `SAD_Shared/Modules/Stats` | *(re-paste — `SecurityLevel`, `RaidHoldSecs`)* |
+| `SAD_Shared/Modules/Types` | *(re-paste — four raid fields)* |
+| `Services/DataService/ProfileTemplate` | *(re-paste — four raid fields)* |
+| `Services/PlayerDataService/Replication` | *(re-paste — all four withheld)* |
+| `Services/ParkService` | *(re-paste — `DinoRendered`)* |
+| `Services/DinosaurService` | *(re-paste — `params.Acquired`)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — `OnStealAlert`)* |
+| `SAD_Client/Controllers/ParkController` | *(re-paste — hides own raid prompts)* |
+
+`StealService` is a Folder containing a ModuleScript named `init`, the same
+shape as `EconomyService` and `UpgradeService`. There is **no new controller** —
+the raid banners live in `HUDController`, which already owns the flash banner
+and the reveal panel, and the prompt-hiding lives in `ParkController`, which
+already owns park-side visuals.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1598,9 +1621,133 @@ is re-checked on the server.
 
 ---
 
+## Step 15 test
+
+**Two clients, always.** In Studio: **Test → Clients and Servers → 2 players →
+Start**. Nothing in this step can be verified with one.
+
+**1. Boot.** Play. New line:
+
+```
+[SAD/S][StealService] Ready. Hold 3.0-9.0s, 600s same-victim cooldown
+```
+
+**2. Everyone starts shielded.** For the first 15 minutes of a session no raid
+is possible — that is the point. Clear both shields to test:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+for _, p in game.Players:GetPlayers() do
+    PDS.Update(p, function(d)
+        d.ShieldUntil = 0
+        d.NewPlayerProtectionDone = true
+    end, "test")
+end
+```
+
+New Player Protection has to go too, or every fresh account is immune.
+
+**3. The alert fires before anything is taken.** Walk Player 2 into Player 1's
+park. Player 1 gets `PLAYER2 IS IN YOUR PARK!` on the flash banner. That warning
+is the counterplay — a raid the victim cannot see coming is one they cannot
+answer.
+
+**4. Hold to lift.** Player 1 needs a placed dinosaur first (hatch one, or use
+`DinosaurService.Create` + `PlaceBest`). Player 2 approaches it: the prompt reads
+**Steal**, and holding it fills a ring for 3 seconds on an undefended park.
+Player 1 sees `PLAYER2 IS TAKING YOUR ...`. On completion the dinosaur vanishes
+from the enclosure, appears on Player 2's back, and a name tag reads
+`PLAYER2 IS STEALING A ...` visible from anywhere.
+
+Player 2 is now visibly slower and **cannot teleport**:
+
+```
+CANNOT TRAVEL · not while you are carrying a dinosaur
+```
+
+**5. Own-park prompts are hidden.** Player 1 should see **no** Steal prompt on
+their own dinosaurs. Player 2 sees them. That is a client-side `Enabled`, so
+check it on both screens.
+
+**6. Reach your gate.** Player 2 walks home and crosses their own gate:
+ownership transfers, the dinosaur auto-places in their park, Player 1 gets a
+`ROBBED` panel with an insurance figure. Count the dinosaurs across both
+profiles before and after — the total must be identical.
+
+```lua
+local function total()
+    local n = 0
+    for _, p in game.Players:GetPlayers() do
+        for _ in PDS.Get(p).Dinos do n += 1 end
+    end
+    return n
+end
+print(total())
+```
+
+**7. Tagging returns it.** Repeat the raid, but have Player 1 touch Player 2
+while they carry. Three seconds later the dinosaur flies home and Player 2 gets
+`TAGGED!`. Try tagging from across the map — the server measures the distance
+itself and refuses.
+
+**8. Disconnecting loses nothing.** Raid again, then close Player 2's window
+mid-carry. Player 1's dinosaur comes back. Then the harder case: raid, and have
+**Player 1** leave mid-carry. The raid voids and the dinosaur returns with them
+— an offline park cannot be robbed, so it cannot be robbed halfway either.
+
+**9. The rules that make it fair.** Each of these should refuse with a reason:
+
+```lua
+local Steal = require(game.ServerScriptService.SAD_Server.Services.StealService)
+local p1, p2 = table.unpack(game.Players:GetPlayers())
+
+print(Steal.CanRaid(p2, p2.UserId))    -- that is your own park
+print(Steal.CanRaid(p2, p1.UserId))    -- wait 90s   (straight after a raid)
+Steal.GrantShield(p1, 600, "test")
+print(Steal.CanRaid(p2, p1.UserId))    -- their park is shielded
+```
+
+**10. The Vault is absolute.** Vault a dinosaur and try to take it:
+
+```lua
+print(Steal.Vault(p1, "<uid>", 1))     -- true
+```
+
+Its Steal prompt refuses with *it is vaulted*, at any security level, forever.
+Confirm it still earns — a vaulted dinosaur is protected, not benched.
+
+**11. Defences buy time, they never block.** Give Player 1 the full defence
+board and re-raid:
+
+```lua
+local Up = require(game.ServerScriptService.SAD_Server.Services.UpgradeService)
+local Econ = require(game.ServerScriptService.SAD_Server.Services.EconomyService)
+Econ.AddFossils(p1, 1e9, "test")
+for _, id in ipairs({"fence","guardTower","camera"}) do Up.Buy(p1, id, 5) end
+local Stats = require(game.ReplicatedStorage.SAD_Shared.Modules.Stats)
+print(Stats.SecurityLevel(PDS.Get(p1)), Stats.RaidHoldSecs(PDS.Get(p1)))  -- 3.75, 7.5
+```
+
+The hold is now 7.5 s, and the Guard Tower auto-tags Player 2 within 40 studs
+of the plot without Player 1 doing anything.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Dinosaur count changes across a raid | The transfer is not atomic — removal must precede minting, with a rollback if storage is full |
+| Owner can sell a dinosaur being carried | `IsLocked` not checked in that mutation path |
+| Thief teleports home carrying | The `raid` blocker was not registered on `NestService.Zones` |
+| Steal prompt on your own dinosaurs | `RaidOwnerUserId` attribute set after parenting, so the client missed it |
+| Hold completes after leaving the park | `tickHolds` cancels on leaving; the client ring alone is not authoritative |
+| Carry survives death | `CharacterRemoving` not connected for players already in the server at boot |
+| Mercy Shield never fires | `RobbedAt` stamps pruned with an inclusive cutoff, or the window read as minutes |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,768 assertions** without Studio:
+Syntax-checks every source file and runs **2,877 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1624,6 +1771,7 @@ Fetches the Luau CLI on first run.
 | `tests/step12_spec.lua` | Footprint occupancy under a packed grid, the banking formula against its own cap, offline earnings at every rebirth, slot caps, and the day-one income curve against docs/05 |
 | `tests/step13_spec.lua` | Every price against integrality and monotonicity, all 14 published max effects, `Stats` block-vs-helper agreement, the Upgrades/Defences split in both directions, Buy Max bounds, the retroactive-income guard, and docs/05 §5's 180-second constraint across a rebirth run |
 | `tests/step14_spec.lua` | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside their zone, zone-vs-park-ring clearance, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim |
+| `tests/step15_spec.lua` | The hold formula against docs/03 §4.2 including V1's real ceiling, shield stacking proven un-permanent, record pruning under 500 entries, the stealable rules, the power floor in both directions, the transfer's conservation property, vault slots, and every raid cooldown |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

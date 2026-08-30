@@ -113,6 +113,49 @@ GameConfig.MultiCarryEffectiveness = 0.40
 --- inline in one service, because Stats folds it and the shop previews it.
 GameConfig.LuckPerNode = 0.005
 
+-- ── Raiding (docs/03 §4.3) ──────────────────────────────────────────────────
+
+--- Hold time to lift a dinosaur: Base + SecurityLevel x PerSecurity.
+GameConfig.RaidHoldBase = 3.0
+GameConfig.RaidHoldPerSecurity = 1.2
+
+--- Raiding is heavier than egg-carrying: the dinosaur's CarryPenalty plus this.
+GameConfig.RaidCarryExtra = 0.10
+
+GameConfig.RaidSameVictimCooldown = 600 -- 10 min
+GameConfig.RaidGlobalCooldown = 90
+GameConfig.RaidPowerFloor = 0.25 -- cannot rob a park worth under 25% of yours
+GameConfig.RaidInsuranceShare = 0.25 -- of the stolen dinosaur's sell value
+GameConfig.RevengeDuration = 1800 -- 30 min
+GameConfig.RevengeHoldMultiplier = 0.5
+
+--- A tagged thief drops the dinosaur, which flies home after this long.
+GameConfig.RaidTagReturnSecs = 3
+
+--- Grace before a disconnected thief's carry resolves back to its owner.
+GameConfig.RaidDisconnectGraceSecs = 30
+
+--- Guard Tower: auto-tags a carrying thief inside this radius (docs/03 §5).
+GameConfig.GuardTowerRange = 40
+
+-- ── Shields (docs/03 §4.3) ──────────────────────────────────────────────────
+
+GameConfig.SessionShieldSecs = 15 * 60
+GameConfig.MercyShieldSecs = 10 * 60
+GameConfig.MercyWindowSecs = 15 * 60
+GameConfig.MercyRobberies = 3 -- robbed this many inside the window
+GameConfig.ShieldStackCapSecs = 2 * 60 * 60 -- nobody buys permanent immunity
+GameConfig.NewPlayerProtectionSecs = 60 * 60
+
+--[[
+	Cap on remembered raid records per profile.
+
+	StealCooldowns and RevengeMarks are keyed by userId, so on a busy account
+	they grow without a bound of their own. Expired entries are pruned on every
+	write; this is the backstop for the case where they are all still live.
+]]
+GameConfig.StealRecordCap = 50
+
 --[[
 	Movement correction. Sustained implausible movement snaps the character
 	back to its last valid position - never a kick. False positives happen on
