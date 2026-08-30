@@ -168,6 +168,57 @@ function ZoneConfig.OriginOf(zoneId: string): CFrame?
 end
 
 --[[
+	The angle a zone's ring slot sits at, in radians. Pulled out of `OriginOf`
+	so the minimap can place a zone on a 2D disc without building a CFrame it
+	would only take the position back out of.
+]]
+function ZoneConfig.AngleOf(zoneId: string): number?
+	local zone = (ZoneConfig.Zones :: any)[zoneId]
+	if not zone then
+		return nil
+	end
+	return (zone.RingSlot - 1) / ZoneConfig.SlotCount * math.pi * 2
+end
+
+--[[
+	Which zone contains a world position, if any. Square bounds, matching the
+	square ground each zone is built on.
+
+	Lives here rather than in `ZoneService` (which now delegates to it) because
+	three things need the answer and only one of them is the server: the
+	trespass check, the minimap's "you are here", and the analytics snapshot's
+	zone dimension. Three implementations of a square test is two too many.
+
+	Done with a 2D rotation rather than `CFrame:PointToObjectSpace` so it is
+	pure and testable outside Roblox. The square is symmetric about both local
+	axes, so which way round the rotation puts X and Z cannot change the answer.
+]]
+function ZoneConfig.ZoneAt(position: Vector3): string?
+	local half = ZoneConfig.ZoneSize * 0.5
+
+	for zoneId in ZoneConfig.Zones do
+		local angle = ZoneConfig.AngleOf(zoneId)
+		if angle then
+			local centreX = math.cos(angle) * ZoneConfig.RingRadius
+			local centreZ = math.sin(angle) * ZoneConfig.RingRadius
+
+			local dx = position.X - centreX
+			local dz = position.Z - centreZ
+
+			-- Rotate by -angle, putting the zone's outward direction on +X.
+			local c, s = math.cos(-angle), math.sin(-angle)
+			local localX = dx * c - dz * s
+			local localZ = dx * s + dz * c
+
+			if math.abs(localX) <= half and math.abs(localZ) <= half then
+				return zoneId
+			end
+		end
+	end
+	return nil
+end
+
+--[[
 	Nest positions inside a zone, in zone-local space.
 
 	A sunflower (golden-angle) spiral: deterministic, so a nest is in the same

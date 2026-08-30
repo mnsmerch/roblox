@@ -285,20 +285,16 @@ end
 
 -- ── Trespass ────────────────────────────────────────────────────────────────
 
---- Which zone contains a world position, if any. Square bounds, matching the
---- square ground each zone is built on.
+--[[
+	Which zone contains a world position, if any.
+
+	Delegates to `ZoneConfig.ZoneAt`, which is where the square test moved when
+	the minimap and the analytics snapshot turned out to need the same answer.
+	Kept as a function here because it is a published part of this service's
+	API and three callers already use it.
+]]
 function ZoneService.ZoneAt(position: Vector3): string?
-	local half = ZoneConfig.ZoneSize * 0.5
-	for zoneId in ZoneConfig.Zones do
-		local origin = ZoneConfig.OriginOf(zoneId)
-		if origin then
-			local local_ = origin:PointToObjectSpace(position)
-			if math.abs(local_.X) <= half and math.abs(local_.Z) <= half then
-				return zoneId
-			end
-		end
-	end
-	return nil
+	return ZoneConfig.ZoneAt(position)
 end
 
 --[[

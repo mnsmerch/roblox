@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 95 source files and runs **4,660 assertions**: the economy
+Syntax-checks all 96 source files and runs **4,766 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -170,11 +170,13 @@ will meet it:
 | The store | 💎 — browsable, honest, and every row reads COMING SOON |
 | Leaderboards | 🏆, and four pillars plus three gold statues west of the plaza |
 | Settings | ⚙️ — 13 rows, all generated from the schema |
+| The map | 🗺️ or **M** — zones, your park, unlock costs; a small disc on tablet and desktop |
 | The exploit sweep | `_G.SAD_DebugExploit.Run()` in Studio |
 
-**Known holes:** no minimap (the 🗺️ button and **M** do nothing — finding 46);
-no animations, sounds or real art (nothing invents an asset id anywhere); no
-localised zone hazards, so zone difficulty rests entirely on guardian speed.
+**Known holes:** no animations, sounds or real art (nothing invents an asset id
+anywhere — `AnimationController` is in the roster and waits on the animation
+pass); no localised zone hazards, so zone difficulty rests entirely on guardian
+speed.
 
 ---
 

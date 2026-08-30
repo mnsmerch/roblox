@@ -5,7 +5,7 @@ accident. Updated at the end of every build step.
 
 ## Status: **All 24 build steps complete.** The V1 game is written.
 
-**It has never run in Roblox Studio.** Twenty-four steps of code and 4,660
+**It has never run in Roblox Studio.** Twenty-four steps of code and 4,766
 offline assertions, and not one Play test. That is the single most important
 thing on this page: everything below describes code that is *correct against
 its own specification*, not code that has been seen to work. SETUP.md has a
@@ -703,6 +703,37 @@ whatever they legitimately move, then the measured hostile pass — and diffs th
 profile into named field changes. Three guards keep it out of a live server, and
 deleting it before publishing is on the launch checklist.
 
+### The minimap (finding 46's other half)
+
+```
+MinimapController.SetThief(userId, active)     -- HUDController is the only caller
+ZoneConfig.AngleOf(zoneId) -> radians?
+ZoneConfig.ZoneAt(position) -> zoneId?         -- pure; ZoneService now delegates
+ParkConfig.PlotAngle(index) -> radians
+```
+
+**Derived geometry, no remote.** Every mark comes from `ZoneConfig` and
+`ParkConfig` — the same pure functions the server builds the world from — plus
+the replicated profile for which zones are unlocked. There is no
+`RequestMapData`; the map is correct on the first frame rather than after a
+round trip.
+
+**It shows no player the server had not already announced.** docs/03 builds the
+raid loop on incomplete information: an alert tells you somebody is in your
+park, and closing the distance is the game. A map with everyone on it deletes
+that. So it shows you, your park, and any raider a `StealAlert` already named —
+and `MinimapController.SetThief` is the only way it ever learns a userId, called
+only by `HUDController`, only from an alert the server sent. The spec models
+that boundary as the state machine it is.
+
+**North-up, not camera-rotated.** A rotating minimap wins in a corridor game and
+loses in a radial one: this map's job is teaching that zones sit on a ring
+around your park, and a ring that spins does not teach that.
+
+**Marks move at 15 Hz, not per frame.** Nothing on a map moves fast enough for
+60 Hz to be visible, and this is the controller most likely to be running on the
+weakest device in the game.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -829,6 +860,7 @@ client never hears about; there is no polling fallback by design.
 | `LeaderboardController` | ModuleScript | The boards screen and the Colosseum's pillars and statues, from one cached fetch |
 | `TutorialController` | ModuleScript | Professor Rok, one world arrow, one objective line, skip. **Asks; never decides** |
 | `SettingsController` | ModuleScript | Generated from `GameConfig.SettingsSchema`; owns Low Graphics |
+| `MinimapController` | ModuleScript | Derived geometry, no remote. **Shows no player the server had not already announced** |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -867,7 +899,7 @@ current value, then on every change at or under that path. No polling anywhere.
 |---|---|
 | `Bootstrap` | **LocalScript** — one of two LocalScripts in the project |
 | `DebugExploitClient` | **LocalScript**, `Disabled` — the exploit sweep. Studio-guarded; **delete before publishing** |
-| `Controllers` | Folder — **19** built; two more are in the roster and were never written (see the gaps below) |
+| `Controllers` | Folder — **20** built; `AnimationController` is in the roster and still unwritten (see the gaps below) |
 
 ## Declared deviations from the frozen contract
 
@@ -986,11 +1018,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 111 | The settings menu is **generated** from `GameConfig.SettingsSchema` | A hand-written menu and the server's schema drift the first time a setting is added: a control for a key the server drops, or a hidden key it accepts. Both silent. Only the labels are hand-written, and a key with no label still renders using its own name | docs/06 §8 |
 | 112 | Added `DebugExploitClient` as the project's second LocalScript | docs/13 §Step 24 asks for it by name. Three guards: `Disabled` by default, an `IsStudio()` return before its own requires, and deletion before publishing on the launch checklist | docs/12 §4, docs/13 §Step 24 |
 | 113 | `Enum.AnalyticsCustomFieldKeys` is checked against `AnalyticsConfig.FieldKeys` at boot | The config is deliberately dependency-free so it can be required and tested outside Roblox, which means the key strings are literals. A Roblox-side rename would otherwise produce events whose fields nobody can query — silently | docs/14 §1 |
+| 114 | `ZoneService.ZoneAt` moved into `ZoneConfig`, and now delegates | Three things need to know which zone a position is in: the trespass check, the minimap and the analytics snapshot. Three implementations of a square test is two too many, and the third would be written by somebody who had not read the first. `ZoneService.ZoneAt` keeps its name — it is a published API with callers | docs/09 §1, docs/02 §1 |
+| 115 | Added `ZoneConfig.AngleOf` and `ParkConfig.PlotAngle` | Both formulas were written out inline in two places each before the minimap needed a third. Pulled out rather than copied again | — |
+| 116 | `ZoneConfig.ZoneAt` uses a 2D rotation, not `CFrame:PointToObjectSpace` | So it is pure and testable outside Roblox, which is the whole reason it moved into a config. The square is symmetric about both local axes, so which way round the rotation puts X and Z cannot change the answer — asserted at all four corners | — |
+| 117 | The minimap shows **no player the server had not already announced** | docs/03 builds the raid loop on incomplete information. A map with everyone on it deletes the chase. `MinimapController.SetThief` is the only way it learns a userId, `HUDController` is its only caller, and it is called only from a `StealAlert` the server sent | docs/03 §1, docs/08 §4 |
+| 118 | `HUDController` reaches `MinimapController` through a pcall'd `app.Get` | Every controller in this project has to survive one that is not built yet — the Bootstrap is designed around it. A missing minimap must cost a dot on a map, not a raid alert | docs/09 §1 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 95 source files and runs **4,660
-assertions** outside Roblox. Last run: **4,660 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 96 source files and runs **4,766
+assertions** outside Roblox. Last run: **4,766 passed, 0 failed.**
 
 **What these do and do not prove.** They prove the code is correct against its
 own specification: every published number in docs/00–15 reproduced from the
@@ -1014,6 +1051,7 @@ been run there.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `minimap_spec` (106) | `ZoneConfig.ZoneAt` driven at every zone's centre, both edges, all four corners and the boundary itself; the projection proven to land every zone corner, all 24 plots, the hub edge and the Obelisk inside the map with the ten-zone build-out checked too; and the position boundary that stops the map leaking a player the server had not announced |
 | `step24_spec` (570) | docs/14's 46 events asserted by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats with no two sharing one, all fifteen economy tags with their source/sink direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template's defaults in both directions, and four of docs/12 §4's nine launch gates actually decided |
 | `step23_spec` (259) | docs/00 §3's twelve beats by id and order, the word count against its own 60-word budget, all four bends proven to be no-ops for a graduate, a skipper and a stateless profile, the chase cap driven against every one of the 20 archetypes with the fastest proven to catch an uncapped player, the top-up at four balances, the advance check driven beat by beat with and without each condition, the two cheats (jump and replay) refused, the deadlock guard driven to a real failure, and beat 2's walk measured against docs/00's fifteen-second budget |
 | `step22_spec` (113) | The four V1 boards against docs/12's list and docs/10 §4's reserved store names, every board's value read off a profile including the emptied park that must keep its Income place, the clamp driven with NaN/infinity/negatives/strings, the rebirth curve's crossing of the ceiling located exactly, request rates computed at five player counts with the binding case proven to be an empty server, the eight-board build-out proven not to fit at a fixed 60 s, an hour of constant earning simulated to 15 requests against a naive 14,400, the rank contract for a player outside the top 100, and the Colosseum's geometry against the plaza and the park ring at 1, 4 and 8 pillars |
@@ -1602,31 +1640,43 @@ Bugs the specs caught before they shipped:
     be unreached, mis-set or silently exceeded when the assertion was first
     written.
 
-46. **Two controllers are in the roster and were never built.** `Bootstrap`'s
-    `CONTROLLER_ORDER` names 21; 19 exist on disk. Missing:
+46. **Two controllers were in the roster and never built; one still is.**
+    `Bootstrap`'s `CONTROLLER_ORDER` named 21 and 19 existed.
 
-    | Controller | Named in | What it was for |
-    |---|---|---|
-    | `AnimationController` | Step 9 | Guardian and dinosaur animation playback |
-    | `MinimapController` | Step 14 | The minimap, and the 🗺️ / **M** action |
-
-    Their absence is **silent**, and that is the part worth recording: the
+    Their absence was **silent**, and that is the part worth keeping: the
     client Bootstrap deliberately tolerates a missing controller so the game
-    can be built up one step at a time, printing "Not built yet (21)" as
-    information rather than as an error. That is the right design for a
-    twenty-four-step build and exactly the wrong one for the end of it, where a
-    controller that never got written looks identical to one that is not needed
-    yet.
+    can be built up one step at a time, printing "Not built yet" as information
+    rather than as an error. That is the right design for a twenty-four-step
+    build and exactly the wrong one at the end of it, where a controller that
+    never got written looks identical to one that is not needed yet.
 
-    `AnimationController` is honestly blocked: there are no animation assets,
-    and the project's standing rule is that an invented `rbxassetid://` is a
-    silent 404 that looks like working code — the same call `SoundController`
-    and Professor Rok make. It arrives with the animation pass.
+    `MinimapController` **has since been built** — see below. `AnimationController`
+    (Step 9, guardian and dinosaur animation playback) is honestly blocked:
+    there are no animation assets, and the project's standing rule is that an
+    invented `rbxassetid://` is a silent 404 that looks like working code, the
+    same call `SoundController` and Professor Rok make. It arrives with the
+    animation pass.
 
-    `MinimapController` is not blocked; it was simply never written. The 🗺️
-    rail button and the **M** key fire `ToggleMap` and nothing listens. That is
-    a real V1 hole and it is left stated rather than thrown together in the
-    last hour of the last step.
+47. **Building the minimap turned up a third copy of the same square test.**
+    `ZoneService.ZoneAt` decided which zone a world position is in. The minimap
+    needs exactly that for "you are here" — and so, it turned out, did Step
+    24's `EconomySnapshot`, which was reading `Profile.CurrentZone`.
+
+    **`Profile.CurrentZone` does not exist.** It never has. Written four steps
+    ago as `data.CurrentZone or "hub"`, it would have reported `hub` for every
+    economy snapshot in the game, forever, with no error anywhere — the zone
+    dimension on the one event meant to show where players spend their time.
+
+    Both are fixed by one move: the square test is now `ZoneConfig.ZoneAt`,
+    pure and shared, with `ZoneService.ZoneAt` delegating to it and the
+    snapshot asking the world where the player is standing instead of the
+    profile. `tests/minimap_spec.lua` drives it at every zone's centre, both
+    edges, all four corners and the boundary itself.
+
+    The general lesson is the one this project keeps relearning: **the third
+    caller is what exposes the duplicate.** Two implementations of a square
+    test agree by luck; the third is written by someone who has not read the
+    first two.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

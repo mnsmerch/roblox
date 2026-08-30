@@ -217,6 +217,16 @@ end
 	rather than needing a new hand-written list.
 	═══════════════════════════════════════════════════════════════════════════
 ]]
+--[[
+	The angle a plot sits at on the ring, in radians. One formula, three
+	callers: `PlotBuilder` builds the plot there, `PlotSearchOrder` sorts by it,
+	and the minimap draws it. It was written out inline in the first two before
+	the third needed it.
+]]
+function ParkConfig.PlotAngle(index: number): number
+	return (index - 1) / ParkConfig.PlotCount * math.pi * 2
+end
+
 function ParkConfig.PlotSearchOrder(zoneRingSlot: number?, zoneSlotCount: number?): { number }
 	local order = {}
 	for index = 1, ParkConfig.PlotCount do
@@ -231,7 +241,7 @@ function ParkConfig.PlotSearchOrder(zoneRingSlot: number?, zoneSlotCount: number
 	local targetAngle = (zoneRingSlot - 1) / zoneSlotCount * math.pi * 2
 
 	local function separation(index: number): number
-		local angle = (index - 1) / ParkConfig.PlotCount * math.pi * 2
+		local angle = ParkConfig.PlotAngle(index)
 		local delta = math.abs(angle - targetAngle) % (math.pi * 2)
 		return math.min(delta, math.pi * 2 - delta)
 	end

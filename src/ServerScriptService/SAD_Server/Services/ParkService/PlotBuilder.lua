@@ -62,7 +62,7 @@ end
 	plaza, with the incubator row the first thing a visitor sees.
 ]]
 function PlotBuilder.OriginOf(index: number): CFrame
-	local angle = (index - 1) / ParkConfig.PlotCount * math.pi * 2
+	local angle = ParkConfig.PlotAngle(index)
 	local outward = Vector3.new(math.cos(angle), 0, math.sin(angle))
 	local position = outward * ParkConfig.RingRadius()
 

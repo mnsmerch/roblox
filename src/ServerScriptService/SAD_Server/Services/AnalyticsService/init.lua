@@ -58,6 +58,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local AnalyticsConfig = require(Shared.Config.AnalyticsConfig)
+local ZoneConfig = require(Shared.Config.ZoneConfig)
 local Log = require(Shared.Modules.Log)
 
 local RobloxAnalytics = game:GetService("AnalyticsService")
@@ -579,9 +580,19 @@ function AnalyticsService.Start(app)
 							placed += 1
 						end
 					end
+					--[[
+						`Profile.CurrentZone` does not exist - the first draft
+						of this read it and would have reported "hub" for every
+						snapshot in the game, silently. Where a player is
+						standing is world state, so it is asked of the world.
+					]]
+					local character = player.Character
+					local root = character and character:FindFirstChild("HumanoidRootPart")
+					local zone = root and ZoneConfig.ZoneAt(root.Position) or "hub"
+
 					emit("EconomySnapshot", player, math.floor(data.Fossils), {
 						rebirths = data.Rebirths,
-						zone = data.CurrentZone or "hub",
+						zone = zone,
 						placedCount = placed,
 					})
 				end

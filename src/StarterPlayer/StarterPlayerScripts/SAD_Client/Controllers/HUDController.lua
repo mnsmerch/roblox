@@ -722,10 +722,24 @@ end
 	Purely a renderer: every decision behind these has already been made and
 	enforced on the server, and nothing here is sent back.
 ]]
+--[[
+	Set by Start. The minimap shows a raider's position, and this is the ONLY
+	way it ever learns about another player - see MinimapController's header for
+	why that boundary matters to the raid design.
+]]
+local MinimapController = nil
+
+local function markRaider(info, active: boolean)
+	if MinimapController and type(info.ThiefUserId) == "number" then
+		MinimapController.SetThief(info.ThiefUserId, active)
+	end
+end
+
 local STEAL_ALERTS = {
 	intruder = function(info)
 		HUDController.Flash(string.upper(info.ThiefName or "SOMEONE") .. " IS IN YOUR PARK!",
 			Theme.Color.Warning, 3)
+		markRaider(info, true)
 	end,
 	raidStarted = function(info)
 		HUDController.Flash(string.format("%s IS TAKING YOUR %s!",
@@ -748,10 +762,12 @@ local STEAL_ALERTS = {
 	towerFired = function(info)
 		HUDController.Flash("YOUR GUARD TOWER TAGGED " .. string.upper(info.ThiefName or "THEM"),
 			Theme.Color.Success, 3)
+		markRaider(info, false)
 	end,
 	returned = function(info)
 		HUDController.Flash(string.upper(info.DinoName or "IT") .. " CAME HOME",
 			Theme.Color.Success, 3)
+		markRaider(info, false)
 	end,
 	stolen = function(info)
 		HUDController.SetChaseMode(false)
@@ -870,6 +886,14 @@ end
 
 function HUDController.Start(app)
 	bindState()
+
+	--[[
+		Optional on purpose: `HUDController` loads before `MinimapController` in
+		the roster, and every controller in this project has to survive one that
+		is not built yet. A missing minimap costs a dot on a map, not an alert.
+	]]
+	local ok, found = pcall(app.Get, "MinimapController")
+	MinimapController = ok and found or nil
 
 	Net.On("StealAlert", HUDController.OnStealAlert)
 
