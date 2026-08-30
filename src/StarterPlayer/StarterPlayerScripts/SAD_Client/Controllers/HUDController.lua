@@ -73,6 +73,7 @@ local LEFT_RAIL = {
 	{ Id = "Daily", Icon = "🎁", Action = "ToggleDaily" },
 	{ Id = "Quests", Icon = "✅", Action = "ToggleQuests" },
 	{ Id = "Index", Icon = "📖", Action = "ToggleIndex" },
+	{ Id = "Store", Icon = "💎", Action = "ToggleStore" },
 	-- Rebirth sits on the rail rather than the bottom bar: it is the rarest
 	-- thing a player does and the one they should never press by accident.
 	{ Id = "Rebirth", Icon = "♻️", Action = "ToggleRebirth" },

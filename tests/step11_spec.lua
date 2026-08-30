@@ -38,7 +38,7 @@ game = { GetService = function(_, _n) return { WaitForChild = function() return 
 local _realRequire = require
 require = function(t) if type(t) == "table" then return t end return _realRequire(t) end
 
---@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Signal=src/ReplicatedStorage/SAD_Shared/Modules/Signal.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
+--@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ProductConfig=src/ReplicatedStorage/SAD_Shared/Config/ProductConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Signal=src/ReplicatedStorage/SAD_Shared/Modules/Signal.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
 
 _shared.Config.GameConfig = GameConfig
 _shared.Config.RarityConfig = RarityConfig
@@ -48,6 +48,7 @@ _shared.Config.ZoneConfig = ZoneConfig
 _shared.Config.UpgradeConfig = UpgradeConfig
 _shared.Config.RebirthConfig = RebirthConfig
 _shared.Config.DailyConfig = DailyConfig
+_shared.Config.ProductConfig = ProductConfig
 _shared.Config.WeatherConfig = WeatherConfig
 _shared.Modules.RNG = RNG
 _shared.Modules.Signal = Signal

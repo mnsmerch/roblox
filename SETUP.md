@@ -584,25 +584,73 @@ together cover every field in the profile exactly once.
 
 ---
 
+## Step 21 — purchases
+
+| Studio object | Source file |
+|---|---|
+| `SAD_Shared/Config/ProductConfig` | `src/.../Config/ProductConfig.lua` *(new)* |
+| `Services/PurchaseService` | `src/.../Services/PurchaseService/init.lua` *(new)* |
+| `SAD_Client/Controllers/PurchaseController` | `src/.../Controllers/PurchaseController.lua` *(new)* |
+| `SAD_Shared/Modules/Net` | *(re-paste — `RequestThanks`, `ServerBoost`)* |
+| `SAD_Shared/Modules/Stats` | *(re-paste — gamepass effects)* |
+| `SAD_Shared/Modules/Economy` | *(re-paste — `OfflineRateFor`)* |
+| `SAD_Shared/Modules/Types` | *(re-paste — `Settings.SeenStoreNotice`)* |
+| `SAD_Shared/Config/GameConfig` | *(re-paste — `SeenStoreNotice` in the settings schema)* |
+| `SAD_Shared/Config/ConfigValidator` | *(re-paste — rule 10 reads `ProductConfig`)* |
+| `Services/DataService/ProfileTemplate` | *(re-paste — `Settings.SeenStoreNotice`)* |
+| `Services/IncubationService` | *(re-paste — `FinishNow`)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — the 💎 rail button)* |
+| `SAD_Client/Controllers/InputController` | *(re-paste — 6)* |
+| `SAD_Client/Bootstrap` | *(re-paste — `PurchaseController` in the roster)* |
+
+`PurchaseController` is **new to the client roster** — re-paste the client
+`Bootstrap` or it will never load.
+
+### Pasting in the asset ids
+
+Every `AssetId` in `ProductConfig` ships as **0**, meaning *not configured*.
+That is deliberate: the experience does not exist yet, and an invented id is a
+purchase prompt that fails silently or, worse, one that charges for somebody
+else's product. The game is fully playable without a single one of them.
+
+When the place exists:
+
+1. Create each gamepass (Creator Dashboard → your experience → Associated
+   Items → Passes) and each developer product (→ Developer Products) with the
+   names and prices in `ProductConfig`.
+2. Paste each id into the matching `AssetId` in `ProductConfig`. Nothing else
+   changes.
+
+Until then `PurchaseService` logs a warning naming how many are still waiting,
+`ConfigValidator` rule 10 warns rather than failing, and the store renders
+those rows greyed as COMING SOON rather than prompting.
+
+**One `ProcessReceipt` per game.** Roblox permits exactly one callback and a
+second assignment silently replaces the first, so `PurchaseService` is the only
+file in the project that touches `MarketplaceService`. If you add another, one
+of them stops receiving receipts and Robux is lost.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
 
 ```
 [SAD/S] ======== Steal a Dinosaur v0.1.0 starting ========
-[SAD/S][Net] Published 38 events and 4 functions
+[SAD/S][Net] Published 40 events and 4 functions
 [SAD/S][Boot] Not built yet (24): SecurityService, DataService, ...
 [SAD/S][Boot] Loaded 0 service(s):
 [SAD/S] ======== Server boot complete (N ms) ========
 [SAD/C] ======== Steal a Dinosaur v0.1.0 client starting ========
 [SAD/C][Net] Connected to remote tree
-[SAD/C][Boot] Not built yet (17): StateController, SoundController, ...
+[SAD/C][Boot] Not built yet (20): StateController, SoundController, ...
 [SAD/C][Boot] Loaded 0 controller(s):
 [SAD/C] ======== Client boot complete (N ms) ========
 ```
 
 Then check `ReplicatedStorage → SAD_Net` exists at runtime with `Events`
-(38 RemoteEvents) and `Functions` (4 RemoteFunctions).
+(40 RemoteEvents) and `Functions` (4 RemoteFunctions).
 
 **Zero errors and zero warnings is the pass condition.**
 
@@ -2481,9 +2529,118 @@ Fossils are gone and the multiplier has not arrived.
 
 ---
 
+## Step 21 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][PurchaseService] Ready, but 6 gamepass(es) and 8 product(s) have no
+    AssetId. Create them in the live place and paste the ids into ProductConfig
+    - everything else works without them
+[SAD/C][PurchaseController] Ready. 6 gamepass(es), 8 product(s), 14 awaiting an id
+```
+
+That warning is the correct state today, not a failure. Once ids are pasted in
+it becomes `Ready. 6 gamepass(es), 8 product(s)`.
+
+**2. The store.** 💎 on the left rail, or **6**. Two tabs, fourteen rows. Every
+buy button reads **COMING SOON** and greys until an `AssetId` is set — pressing
+one flashes NOT AVAILABLE YET rather than opening a prompt Roblox would reject.
+
+The **SERVER: 2× Luck** row is outlined in amber and sits first under ITEMS:
+docs/07 §4 makes it the purchase that is meant to make you popular.
+
+**3. The honesty panel (docs/07 §1 rule 7).** On the first open only, a panel
+says *"You never need to spend Robux to get any dinosaur in this game."*
+Dismiss it, close the store, reopen: it stays gone. To see it again:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local p = game.Players:GetPlayers()[1]
+PDS.Update(p, function(d) d.Settings.SeenStoreNotice = false end, "test")
+```
+
+**4. Granting a product without paying, to test the effects.** `AssetId = 0`
+means nothing can be bought in Studio, so drive the grant directly:
+
+```lua
+local PS = require(game.ServerScriptService.SAD_Server.Services.PurchaseService)
+local Products = require(game.ReplicatedStorage.SAD_Shared.Config.ProductConfig)
+
+print(PS.GrantProduct(p, Products.GetProduct("fossilPackSmall")))
+-- 10 minutes of YOUR income, not a fixed amount (docs/07 §3)
+print(PS.GrantProduct(p, Products.GetProduct("parkShield")))    -- 30 min, stack-capped
+print(PS.GrantProduct(p, Products.GetProduct("instantHatchAll")))
+```
+
+A Fossil Pack granted with an empty park pays the floor, not zero — otherwise
+the pack sold to the players least able to use one would pay literally nothing.
+
+**5. The receipt is idempotent.** The expensive bug docs/13 warns about. Grant
+with a receipt id, then replay the same id:
+
+```lua
+local before = PDS.Get(p).Fossils
+PS.GrantProduct(p, Products.GetProduct("fossilPackSmall"), "receipt-test-1")
+local once = PDS.Get(p).Fossils
+PS.GrantProduct(p, Products.GetProduct("fossilPackSmall"), "receipt-test-1")
+print(once == PDS.Get(p).Fossils)   -- true: the second is a no-op
+print(#PDS.Get(p).ProcessedReceipts) -- the ring, capped at 100
+```
+
+**6. A gamepass applies without a rejoin.** docs/13's test. Fake ownership the
+way `RefreshOwnership` would set it, then watch the derived stats move:
+
+```lua
+local Stats = require(game.ReplicatedStorage.SAD_Shared.Modules.Stats)
+print(Stats.DinoSlots(PDS.Get(p)))
+PDS.Update(p, function(d) d.Gamepasses.dinoSlots6 = true end, "test")
+print(Stats.DinoSlots(PDS.Get(p)))   -- six higher, immediately
+```
+
+The shop and the park read `Stats`, so the slots appear without a rejoin
+because the profile changed — there is no separate paid code path to go wrong.
+
+**7. VIP's offline rate.** The one that had a real bug in it (finding 36):
+
+```lua
+local Econ = require(game.ReplicatedStorage.SAD_Shared.Modules.Economy)
+print(Econ.OfflineRateFor(PDS.Get(p)))    -- 0.6
+PDS.Update(p, function(d) d.Gamepasses.vip = true end, "test")
+print(Econ.OfflineRateFor(PDS.Get(p)))    -- 1.0, not 1.6
+```
+
+**8. A server purchase and the Thanks button.** Needs two clients — use
+**Test → Clients and Servers → 2 players**:
+
+```lua
+PS.GrantProduct(p, Products.GetProduct("serverLuck"))
+```
+
+Both clients get the gold takeover naming the buyer, then a gold banner with
+**THANKS!** beside it. The buyer sees the banner without a button — you cannot
+thank yourself. Press it on the other client: that player gains 500 Fossils
+(the *thanker* is paid, so people actually press it) and the buyer sees
+`… SAYS THANKS`. Press it again: nothing, once per player. Wait past 60 s and
+the banner clears itself.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| A purchase charges but nothing arrives | `PurchaseGranted` returned before the profile was saved — the most expensive bug possible, and what step 5 above tests |
+| A product grants twice | The receipt recorded after the grant instead of in the same write |
+| A second `ProcessReceipt` somewhere | Roblox permits one; the later assignment silently wins and the other's receipts are lost |
+| Buy buttons prompt and fail | An `AssetId` set to something that is not a real id for **this** place |
+| VIP earns more offline than online | `EffectModes.OfflineRate` not `"max"` — see finding 36 |
+| Thanks pays the buyer | Backwards: docs/07 §4 pays the thanker |
+| The honesty panel every session | `RequestSetSetting` not reaching the server, or `SeenStoreNotice` missing from the schema so the write is dropped |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,552 assertions** without Studio:
+Syntax-checks every source file and runs **3,718 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2513,6 +2670,7 @@ Fetches the Luau CLI on first run.
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
+| `tests/step21_spec.lua` | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; no asset id invented, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches and against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; VIP's offline rate through to the hourly payout; and both store orders proven to cover the catalogue exactly once |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

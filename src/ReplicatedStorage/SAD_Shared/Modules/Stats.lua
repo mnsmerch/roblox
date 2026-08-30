@@ -27,7 +27,8 @@
 	than the stat silently reading as its base value forever.
 	═══════════════════════════════════════════════════════════════════════════
 
-	Depends on: GameConfig, UpgradeConfig, RebirthConfig.
+	Depends on: GameConfig, UpgradeConfig, RebirthConfig, DailyConfig (boost
+	            definitions), ProductConfig (gamepass effects).
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -35,6 +36,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local GameConfig = require(Shared.Config.GameConfig)
 local DailyConfig = require(Shared.Config.DailyConfig)
+local ProductConfig = require(Shared.Config.ProductConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local UpgradeConfig = require(Shared.Config.UpgradeConfig)
 
@@ -116,6 +118,22 @@ end
 Stats.BoostTotal = boostTotal
 
 --[[
+	The combined gamepass contribution to one effect.
+
+	Read here rather than in PurchaseService for the same reason everything
+	else in this module is: a pass whose effect nothing reads is a pass that
+	does nothing, which docs/07 §1 rule 1 would make a refund. Ownership is
+	replicated, so the client computes the same numbers the server does.
+
+	`ProductConfig.EffectTotal` applies docs/07 §2's x2.6 income stacking cap.
+]]
+local function passTotal(data, effectName: string, default: number): number
+	return ProductConfig.EffectTotal(data and data.Gamepasses, effectName, default)
+end
+
+Stats.PassTotal = passTotal
+
+--[[
 	The whole derived stat block for a profile.
 
 	Allocates a table per call, which is fine everywhere it is used today
@@ -168,6 +186,7 @@ function Stats.DinoSlots(data): number
 	return effect(data, "dinoSlots")
 		+ RebirthConfig.BonusDinoSlots((data and data.Rebirths) or 0)
 		+ ((data and data.BonusDinoSlots) or 0)
+		+ passTotal(data, "DinoSlots", 0)
 end
 
 function Stats.DinoStorage(data): number
@@ -175,15 +194,20 @@ function Stats.DinoStorage(data): number
 end
 
 function Stats.Incubators(data): number
-	return effect(data, "incubators")
+	return effect(data, "incubators") + passTotal(data, "Incubators", 0)
 end
 
 function Stats.IncubationMult(data): number
-	return effect(data, "incubatorSpeed")
+	return effect(data, "incubatorSpeed") * passTotal(data, "IncubationMultiplier", 1)
 end
 
+--[[
+	The Feeding Trough track times the gamepass multiplier, which
+	ProductConfig caps at x2.6 across the whole catalogue (docs/07 §2) - so a
+	full-catalogue buyer is roughly a 2.6x faster player, not a 20x one.
+]]
 function Stats.ParkIncomeMult(data): number
-	return effect(data, "feedingTrough")
+	return effect(data, "feedingTrough") * passTotal(data, "IncomeMultiplier", 1)
 end
 
 function Stats.BankSecs(data): number
@@ -198,6 +222,7 @@ function Stats.Luck(data, now: number?): number
 		+ RebirthConfig.LuckBonus(rebirths)
 		+ ((data and data.LuckNodes) or 0) * GameConfig.LuckPerNode
 		+ boostTotal(data, "luck", now)
+		+ passTotal(data, "Luck", 0)
 end
 
 function Stats.MutLuck(data, now: number?): number
@@ -205,7 +230,8 @@ function Stats.MutLuck(data, now: number?): number
 	return math.clamp(
 		effect(data, "incubatorGenetics")
 			+ RebirthConfig.MutLuckBonus(rebirths)
-			+ boostTotal(data, "mutLuck", now),
+			+ boostTotal(data, "mutLuck", now)
+			+ passTotal(data, "MutLuck", 0),
 		0, Stats.MaxMutLuck)
 end
 

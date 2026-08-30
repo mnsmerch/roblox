@@ -25,6 +25,7 @@
 	API:
 		IncubationService.BeginIncubation(player, eggUid, slotIndex?) -> ok, reason?
 		IncubationService.Claim(player, slotIndex) -> ok, reason?
+		IncubationService.FinishNow(player, all?) -> finished
 		IncubationService.AutoStart(player) -> started
 		IncubationService.DurationFor(data, rarity) -> seconds
 		IncubationService.GetSlotCount(player) -> number
@@ -235,6 +236,63 @@ end
 	leaves it incubating and ready, so nothing is ever destroyed by a failed
 	hatch.
 ]]
+--[[
+	Finishes incubation immediately, for the Instant Hatch products (Step 21).
+
+	Brings HatchAt forward rather than hatching directly, so the egg still goes
+	through Claim and gets the same reveal, the same mutation roll and the same
+	storage check a patient player's egg would. A second code path to a hatch
+	is a second place for the odds to be wrong.
+
+	Returns how many eggs were finished.
+]]
+function IncubationService.FinishNow(player: Player, all: boolean?): number
+	local data = PlayerDataService.Get(player)
+	if not data then
+		return 0
+	end
+
+	local now = os.time()
+	local slots = {}
+	for slotIndex, slot in data.Incubators do
+		if slot and slot.HatchAt > now then
+			table.insert(slots, slotIndex)
+		end
+	end
+	table.sort(slots)
+
+	if #slots == 0 then
+		return 0
+	end
+	if not all then
+		slots = { slots[1] }
+	end
+
+	PlayerDataService.UpdateKeys(player, { "Incubators" }, function(profile)
+		for _, slotIndex in slots do
+			local slot = profile.Incubators[slotIndex]
+			if slot then
+				slot.HatchAt = now
+			end
+		end
+	end, "instant hatch")
+
+	--[[
+		Claimed after the write, one at a time. A storage-full refusal leaves
+		that egg ready in its incubator rather than losing it - the same
+		behaviour Step 11 gave a patient player.
+	]]
+	local finished = 0
+	for _, slotIndex in slots do
+		local claimed = IncubationService.Claim(player, slotIndex)
+		if claimed then
+			finished += 1
+		end
+	end
+
+	return finished
+end
+
 function IncubationService.Claim(player: Player, slotIndex: number): (boolean, string?)
 	local data = PlayerDataService.Get(player)
 	if not data then

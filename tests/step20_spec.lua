@@ -39,11 +39,12 @@ game = { GetService = function(_, _n) return { WaitForChild = function() return 
 local _realRequire = require
 require = function(t) if type(t) == "table" then return t end return _realRequire(t) end
 
---@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
+--@INJECT GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ProductConfig=src/ReplicatedStorage/SAD_Shared/Config/ProductConfig.lua ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
 
 for name, mod in pairs({ GameConfig = GameConfig, RarityConfig = RarityConfig, DinoConfig = DinoConfig,
 	ZoneConfig = ZoneConfig, UpgradeConfig = UpgradeConfig, RebirthConfig = RebirthConfig,
-	MutationConfig = MutationConfig, DailyConfig = DailyConfig, ParkConfig = ParkConfig }) do
+	MutationConfig = MutationConfig, DailyConfig = DailyConfig, ParkConfig = ParkConfig,
+	ProductConfig = ProductConfig }) do
 	_shared.Config[name] = mod
 end
 

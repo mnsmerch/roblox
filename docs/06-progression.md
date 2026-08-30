@@ -184,6 +184,7 @@ noted.
 | Damage/knockback screen effects | on/off | accessibility |
 | UI scale | 80–130 % | accessibility |
 | Auto-collect income | on/off | if unlocked |
+| Store notice seen | on/off | not shown in the settings screen; records docs/07 §1 rule 7's one-time panel. Turning it off shows the panel again |
 
 **Low Graphics Mode** is auto-suggested on first join if the device reports a
 low `WorkspaceQualityLevel` or is mobile with < 3 GB RAM (approximated via

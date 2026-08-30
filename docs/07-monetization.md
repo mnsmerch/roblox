@@ -41,6 +41,30 @@ prices are how children's games get bad press.
 income is capped at **×2.6** so a full-catalogue buyer is roughly a 2.6× faster
 player, not a 20× one.
 
+**What the cap governs, measured (Step 21).** The cap applies to the *direct*
+income multiplier channel. V1 ships six of the twelve passes above and exactly
+one of them — Double Income — touches that channel, so V1's whole catalogue
+multiplies to ×2.0 and the cap is correct but currently unreached. It binds the
+day a second income pass ships.
+
+A buyer's real throughput advantage is income × *slots*, and the slot channel is
+additive and uncapped. Measured against a free player at the same point on the
+Dinosaur Slots track:
+
+| Free player's slot level | Slots free / paid | Overall multiple |
+|---:|---|---:|
+| 0 (brand-new account) | 4 / 12 | ×6.00 |
+| 5 | 9 / 17 | ×3.78 |
+| 12 | 16 / 24 | ×3.00 |
+| 26 (track complete) | 30 / 38 | ×2.53 |
+
+So ×2.6 is accurate for a player who has actually played — the advantage
+converges on it — and the gap is widest on a fresh account, where the free path
+has barely started. That shape is the intended one under §1 rule 1: the passes
+are a head start, not a ceiling. It is left uncapped deliberately; capping slots
+would mean confiscating placement space a player has already bought and built
+their park around.
+
 ## 3. Developer products
 
 | Product | Robux | Effect |

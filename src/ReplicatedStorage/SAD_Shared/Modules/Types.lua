@@ -109,6 +109,7 @@ export type Settings = {
 	ScreenEffects: boolean,
 	UiScale: number,
 	AutoCollect: boolean,
+	SeenStoreNotice: boolean,
 }
 
 export type Stats = {

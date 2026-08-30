@@ -95,6 +95,15 @@ GameConfig.SettingsSchema = {
 	ScreenEffects = { Type = "boolean" },
 	UiScale = { Type = "number", Min = 80, Max = 130 },
 	AutoCollect = { Type = "boolean" },
+	--[[
+		docs/07 §1 rule 7: "The first time a player opens the shop, a plain
+		panel says: You never need to spend Robux to get any dinosaur in this
+		game." A per-session flag would re-nag; a profile field states it once
+		and remembers. It lives in Settings because there is already a
+		validated remote for writing one, and because a player who wants to
+		read it again can turn it back on.
+	]]
+	SeenStoreNotice = { Type = "boolean" },
 }
 
 -- ── Movement ────────────────────────────────────────────────────────────────

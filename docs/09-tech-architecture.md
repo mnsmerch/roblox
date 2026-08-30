@@ -89,7 +89,7 @@ ServerScriptService
         ├── RebirthService           validation, the one-write reset, grants
         ├── IndexService             discovery, completion %, milestones
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
-        ├── PurchaseService          ProcessReceipt, gamepass ownership cache
+        ├── PurchaseService          ProcessReceipt, ownership cache, server boosts
         ├── LeaderboardService       OrderedDataStore aggregation
         ├── NotificationService      the one place a notification is created
         ├── BroadcastService         MessagingService: the only file that knows it exists
@@ -120,6 +120,8 @@ StarterPlayer
             ├── TeleportController   the zone wheel and PARK teleport
             ├── MinimapController
             ├── WeatherController    Lighting, locally, so it always reverts
+            ├── RebirthController    the keep/lose/gain confirm screen
+            ├── PurchaseController   the store, the honesty panel, Thanks
             ├── TutorialController
             └── SettingsController
 
@@ -238,6 +240,7 @@ over-limit calls silently, and logs offenders to `SecurityService`.
 | `RequestSetSetting` | 5 / 10 | `key: string, value: any` |
 | `RequestTutorialStep` | 3 / 5 | `step: number` |
 | `RequestEventAction` | 3 / 6 | `eventId: string, action: string, arg: any?` |
+| `RequestThanks` | 2 / 3 | `buyerUserId: number` — docs/07 §4's Thanks button |
 
 ### 3.2 RemoteEvents — server → client
 
@@ -250,6 +253,7 @@ over-limit calls silently, and logs offenders to `SecurityService`.
 | `WeatherChanged` | `{weatherId, endsAt}` |
 | `EventState` | `{eventId, phase, endsAt, data}` |
 | `StealAlert` | `{thiefUserId, thiefName, dinoUid, stage}` |
+| `ServerBoost` | `{buyerUserId, buyerName, product, windowSecs}` — a server-wide purchase, and the window in which Thanks may be sent |
 | `ChaseState` | `{active, guardianModelName, distance}` |
 | `IncomePopup` | `{amount, worldPos}` |
 | `TutorialState` | `{step, hintText}` |

@@ -341,20 +341,43 @@ local function ruleProductIds(report, c)
 		return
 	end
 
+	--[[
+		An AssetId of 0 means NOT CONFIGURED YET, and it warns rather than
+		failing. The Roblox experience does not exist yet, and a game with no
+		store must still boot and be entirely playable - docs/07 §1 rule 1
+		guarantees every paid effect exists free at lower magnitude, so a
+		store-less build is a complete game rather than a broken one.
+
+		Anything OTHER than 0 is held to the full rule: a positive integer,
+		unique across both catalogues. A wrong id is far worse than a missing
+		one, because it charges for somebody else's product.
+	]]
 	local seen = {}
+	local configured, unconfigured = 0, 0
+
 	for _, group in { c.Product.Gamepasses or {}, c.Product.Products or {} } do
 		for id, entry in group do
 			local assetId = entry.AssetId
-			if type(assetId) ~= "number" or assetId <= 0 or assetId % 1 ~= 0 then
-				fail(report, "R10", "'%s' has AssetId %s - must be a positive integer", id, tostring(assetId))
+
+			if assetId == 0 then
+				unconfigured += 1
+			elseif type(assetId) ~= "number" or assetId < 0 or assetId % 1 ~= 0 then
+				fail(report, "R10", "'%s' has AssetId %s - must be a positive integer or 0",
+					id, tostring(assetId))
 			elseif seen[assetId] then
 				fail(report, "R10", "AssetId %d is used by both '%s' and '%s'", assetId, seen[assetId], id)
 			else
 				seen[assetId] = id
+				configured += 1
 			end
 		end
 	end
-	pass(report, "R10", "all product ids are unique positive integers")
+
+	if unconfigured > 0 then
+		warn(report, "R10", "%d product(s) have no AssetId yet - they cannot be sold", unconfigured)
+	end
+	pass(report, "R10", "%d configured product id(s), all unique; %d awaiting an id",
+		configured, unconfigured)
 end
 
 -- ═══ Extra structural checks ═══════════════════════════════════════════════
@@ -637,6 +660,11 @@ function ConfigValidator.RunDefault()
 		Event = optional("EventConfig"),
 		EventHandlers = eventHandlers(),
 		Assets = assets,
+		--[[
+			Rule 10's input, reserved since Step 3 and filled in at Step 21.
+			`optional` still, because a build with no store is a build the
+			validator should pass rather than refuse.
+		]]
 		Product = optional("ProductConfig"),
 	})
 end

@@ -34,12 +34,13 @@ game = { GetService = function(_, _n) return { WaitForChild = function() return 
 local _realRequire = require
 require = function(t) if type(t) == "table" then return t end return _realRequire(t) end
 
---@INJECT WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
+--@INJECT WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua DailyConfig=src/ReplicatedStorage/SAD_Shared/Config/DailyConfig.lua ProductConfig=src/ReplicatedStorage/SAD_Shared/Config/ProductConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua@
 
 for name, mod in pairs({ WeatherConfig = WeatherConfig, MutationConfig = MutationConfig,
 	RarityConfig = RarityConfig, ZoneConfig = ZoneConfig, RebirthConfig = RebirthConfig,
 	UpgradeConfig = UpgradeConfig, GameConfig = GameConfig ,
-	DailyConfig = DailyConfig }) do
+	DailyConfig = DailyConfig,
+	ProductConfig = ProductConfig }) do
 	_shared.Config[name] = mod
 end
 _shared.Modules.RNG = RNG

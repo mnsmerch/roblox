@@ -15,7 +15,8 @@
 	Every function here is PURE - profile in, number out - which is what lets
 	docs/05's published values be asserted rather than played for.
 
-	Depends on: RarityConfig, DinoConfig, MutationConfig, RebirthConfig, Stats.
+	Depends on: RarityConfig, DinoConfig, MutationConfig, RebirthConfig,
+	            ProductConfig, Stats.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,6 +25,7 @@ local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
 local DinoConfig = require(Shared.Config.DinoConfig)
 local MutationConfig = require(Shared.Config.MutationConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
+local ProductConfig = require(Shared.Config.ProductConfig)
 local RebirthConfig = require(Shared.Config.RebirthConfig)
 local Stats = require(Shared.Modules.Stats)
 
@@ -189,6 +191,18 @@ end
 	returns to the same sixty seconds of income regardless of how long they were
 	gone, which is the opposite of a reason to come back.
 ]]
+--[[
+	The share of active income an offline park earns. 0.60 normally, 1.00 with
+	VIP (docs/07 §2).
+
+	Here rather than in PurchaseService because the offline summary is drawn
+	from this same function on the client - a VIP who is shown 60% and paid
+	100% would be a bug in the direction nobody reports.
+]]
+function Economy.OfflineRateFor(data): number
+	return ProductConfig.EffectTotal(data and data.Gamepasses, "OfflineRate", Economy.OfflineRate)
+end
+
 function Economy.OfflineEarnings(data, now: number, rate: number?, offlineRate: number?): (number, number)
 	local lastSeen = data.LastSeen or 0
 	if lastSeen <= 0 then
@@ -199,7 +213,7 @@ function Economy.OfflineEarnings(data, now: number, rate: number?, offlineRate: 
 	local capped = math.min(away, RebirthConfig.OfflineCapSecs(data.Rebirths))
 
 	local currentRate = rate or Economy.ParkIncomeRate(data)
-	return currentRate * capped * (offlineRate or Economy.OfflineRate), capped
+	return currentRate * capped * (offlineRate or Economy.OfflineRateFor(data)), capped
 end
 
 -- ── Helpers ─────────────────────────────────────────────────────────────────

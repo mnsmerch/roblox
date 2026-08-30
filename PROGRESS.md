@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 20 of 24 complete.** The loop can be reset and re-run. Awaiting the Studio Play tests before Step 21.
+## Status: **Step 21 of 24 complete.** The loop can be reset, re-run and paid for. Awaiting the Studio Play tests before Step 22.
 
 ## Completed
 
@@ -31,6 +31,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 18** — server events | Scheduler, 4 handlers, contribution rewards, 98 more assertions |
 | 2026-08-30 | **Step 19** — quests, dailies, Index | UTC days, streaks, milestones, 281 more assertions |
 | 2026-08-30 | **Step 20** — rebirth | The one-write reset, the shared preview, 124 more assertions |
+| 2026-08-30 | **Step 21** — purchases | 6 passes, 8 products, the receipt ring, 103 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -56,7 +57,7 @@ accident. Updated at the end of every build step.
 | 18 | Server events | ✅ **done** |
 | 19 | Quests, dailies, index | ✅ **done** |
 | 20 | Rebirth | ✅ **done** |
-| 21 | Purchases | ⬜ |
+| 21 | Purchases | ✅ **done** |
 | 22 | Leaderboards | ⬜ |
 | 23 | Tutorial | ⬜ |
 | 24 | Polish, analytics, hardening | ⬜ |
@@ -85,6 +86,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/QuestConfig` | ModuleScript | 12 daily + 6 weekly quests; the metric list QuestService asserts against |
 | `Config/DailyConfig` | ModuleScript | The 7-day chest, streak milestones, boost definitions |
 | `Config/IndexConfig` | ModuleScript | Milestones, rarity sets, and a **counted** completion denominator |
+| `Config/ProductConfig` | ModuleScript | 6 gamepasses + 8 products, their effects, and **no invented asset ids** |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -102,7 +104,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 
 ### Created at runtime (do NOT build by hand)
 
-`ReplicatedStorage/SAD_Net` with `Events` (28 client→server + 10 server→client
+`ReplicatedStorage/SAD_Net` with `Events` (29 client→server + 11 server→client
 RemoteEvents) and `Functions` (4 RemoteFunctions). `Net.Init()` destroys and
 rebuilds this on every server start.
 
@@ -143,6 +145,7 @@ rebuilds this on every server start.
 | `Services/DailyService` | ModuleScript | The 7-day chest and the streak |
 | `Services/IndexService` | ModuleScript | Discovery, completion %, milestones and rarity sets |
 | `Services/RebirthService` | ModuleScript | Eligibility, the one-write reset, grants, the Cache |
+| `Services/PurchaseService` | ModuleScript | **The only file that touches MarketplaceService.** Receipts, ownership, server boosts |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -490,6 +493,53 @@ to its default, the Cache egg — and applies it in a single `UpdateKeys`
 callback that does no arithmetic and yields nowhere. There is no state the
 profile can be left in halfway.
 
+### Step 21 — purchases
+
+```
+ProductConfig.Gamepasses / Products           -- keyed by OUR string key, never the asset id
+ProductConfig.GetPass(key) / GetProduct(key)
+ProductConfig.ByAssetId(assetId) -> kind, entry
+ProductConfig.IsConfigured(entry) -> boolean  -- AssetId > 0
+ProductConfig.Unconfigured() -> passes, products
+ProductConfig.EffectModes                     -- add | multiply | max, per effect
+ProductConfig.EffectTotal(owned, effect, default) -> number
+ProductConfig.HasPass(owned, key) -> boolean
+ProductConfig.CountPasses() / CountProducts() -> number
+
+PurchaseService.Owns(player, key) -> boolean
+PurchaseService.RefreshOwnership(player)
+PurchaseService.Prompt(player, key)
+PurchaseService.Thank(player, buyerUserId) -> ok, reason?
+PurchaseService.Purchased  Signal(player, kind, key)
+
+Economy.OfflineRateFor(data) -> number
+IncubationService.FinishNow(player, all?) -> count
+```
+
+**Ownership is keyed by our key, not the asset id.** `Profile.Gamepasses` stores
+`{ vip = true }`. A DataStore round trip mangles a table with sparse numeric
+keys, and the asset id legitimately differs between a test place and the live
+one — keying on it would invalidate every save the day the game is published.
+
+**No asset id is invented.** All 14 entries ship with `AssetId = 0`, meaning
+*not configured yet*: the experience does not exist (open question #1). A
+plausible-looking id is a prompt that fails silently or, worse, one that charges
+for somebody else's product. `PurchaseService` refuses to prompt or process an
+unconfigured id and says so at boot; ConfigValidator rule 10 warns rather than
+failing, because a game with no store must still be entirely playable.
+
+**`processReceipt` makes four guarantees, in this order.** (1) A profile that is
+not loaded returns `NotProcessedYet` — Roblox will re-deliver. (2) A receipt
+already in the 100-entry ring returns `PurchaseGranted` *without* granting
+again. (3) The receipt is recorded and the grant applied in **one** write. (4)
+The save is awaited before returning `PurchaseGranted`. Any other ordering pays
+twice or loses a purchase, and `tests/step21_spec.lua` crashes the sequence at
+each of the four steps to prove it.
+
+**How each effect combines is declared, not inferred.** `ProductConfig.
+EffectModes` names `add`, `multiply` or `max` per effect, and a require-time
+assertion fails any pass granting a numeric effect with no mode. See finding 36.
+
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
@@ -612,6 +662,7 @@ client never hears about; there is no polling fallback by design.
 | `QuestController` | ModuleScript | The quest board and the daily chest |
 | `IndexController` | ModuleScript | The book, one page per zone |
 | `RebirthController` | ModuleScript | The keep/lose/gain confirm screen |
+| `PurchaseController` | ModuleScript | The Robux store, the honesty panel, the server-boost banner and Thanks. **Prompts; never grants** |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -732,11 +783,23 @@ current value, then on every change at or under that path. No polling anywhere.
 | 75 | Added `RebirthController` to the client roster (#19) | docs/09 §1's client list has no home for a confirm screen, and docs/13 §Step 20 asks for one. On the left rail rather than the bottom bar: rebirth is the rarest thing a player does and the one they should never press by accident | docs/09 §1 |
 | 76 | `DataService.Template` exposes the ProfileTemplate | `RebirthConfig.Validate` needs the schema to check its coverage against. Read-only by convention; DataService is still the only thing that writes through it | docs/09 §1 |
 | 77 | docs/05 §6's Rebirth Cache example corrected: a Mythic career caches a **Legendary**, not an Epic | The rule says "minus one tier" and the example says a Mythic player gets an Epic, which is minus two. The rule is the mechanism and the example is prose illustrating it, so the rule wins and `CacheTiersBelowBest = 1` stands. The generosity question is real, though — flipping that constant to 2 is the whole change, and the spec asserts both readings | docs/05 §6 |
+| 78 | Added `ProductConfig` as config module #17, keyed by our string keys | `Profile.Gamepasses` cannot be keyed by asset id: a DataStore round trip mangles sparse numeric keys, and the id differs between a test place and the live one, so keying on it would invalidate every save on publish day | docs/09 §1, docs/07 §2 |
+| 79 | Every `AssetId` ships as **0**, meaning not configured | The experience does not exist yet (open question #1). An invented `rbxassetid` is a prompt that fails silently or charges for somebody else's product — the same stance `SoundController` takes for audio (#55). `PurchaseService` refuses to prompt or process one, and rule 10 warns rather than failing so a store-less game stays fully playable | docs/07, docs/11 §5 |
+| 80 | ConfigValidator **rule 10** treats `AssetId == 0` as unconfigured | Without this the rule fails the boot of a game that is deliberately store-less. Anything non-zero is still held to being a unique positive integer, so a typo'd or duplicated id fails loudly the moment a real one is pasted in | docs/11 §5 |
+| 81 | Added `ProductConfig.EffectModes`; `EffectTotal` no longer infers the mode from the default | See finding #36. Inference was right for five effects of eight and silently wrong for `OfflineRate`. A require-time assertion now fails any pass granting a numeric effect with no declared mode | docs/07 §2 |
+| 82 | Added `Economy.OfflineRateFor(data)`; `OfflineEarnings` uses it when no rate is passed | VIP's 100 % offline rate has to reach the calculation that pays it, and the calculation is shared — the client draws the same figure the server banks. The explicit-rate parameter stays, so existing callers and the specs are unchanged | docs/07 §2, docs/05 §4 |
+| 83 | Added `IncubationService.FinishNow(player, all?)` | The Instant Hatch products bring `HatchAt` forward and then go through the ordinary `Claim`, so the reveal, the mutation roll and the storage check are the same code paths a free hatch uses. A separate grant path is how a paid hatch quietly stops rolling mutations | docs/07 §3 |
+| 84 | `PurchaseService` is the only file that references `MarketplaceService` | Ownership, receipts and prompts in one place means one rate limit, one cache, and one `ProcessReceipt` — Roblox permits exactly one callback, and a second assignment silently replaces the first | docs/09 §1 |
+| 85 | Added remotes `RequestThanks` (c2s) and `ServerBoost` (s2c) | docs/07 §4's Thanks button and the gold banner that precedes it. Net now publishes 40 events and 4 functions | docs/09 §3 |
+| 86 | Gamepass effects fold into `Stats` and `Economy`, not into a parallel paid path | `DinoSlots`, `Incubators`, `IncubationMult`, `ParkIncomeMult`, `Luck` and `MutLuck` all gain a `passTotal` term at the point they are already composed. A pass that reads its own numbers is a pass that stops matching the rest of the game the first time a cap moves | docs/07 §2 |
+| 87 | Added `PurchaseController` to the client roster (#20), on the left rail as 💎 and on **6** | docs/13 §Step 21 asks for "server-wide boost purchases + the Thanks button", and both remotes would otherwise be declared and inert. The store itself has to live somewhere too: the Bone Market spends Fossils and mixing a Robux prompt into it is exactly the confusion docs/07 §1 rule 7 exists to prevent | docs/09 §1, docs/07 §4 |
+| 88 | The store's row order lives in `ProductConfig`, not the controller | A hash table has no order, so a store that iterates one moves its rows between sessions. More importantly an order the client owns cannot be checked against the catalogue: `PassOrder` and `ProductOrder` are asserted at require time to cover it exactly once, so a pass added without a listing fails loudly instead of silently never appearing for sale | docs/07 §2–3 |
+| 89 | Added `Settings.SeenStoreNotice` (schema + template, no migration) | docs/07 §1 rule 7's panel is "the first time a player opens the shop", which needs somewhere durable to record that it has been shown or it becomes a nag. In `Settings` because there is already a validated remote for writing one and because a player can turn it back on. A new field with a sensible default is Reconcile's job, not a migration's — the same call `BankedRate` made (#38) | docs/06 §8, docs/07 §1 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 82 source files and runs **3,552
-assertions** outside Roblox. Last run: **3,552 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 85 source files and runs **3,718
+assertions** outside Roblox. Last run: **3,718 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -752,6 +815,7 @@ assertions** outside Roblox. Last run: **3,552 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step21_spec` (162) | `processReceipt` modelled as a state machine and crashed at each of its four steps, with the wrong ordering proven to pay twice; the receipt ring's bound; the catalogue counted against docs/12's V1 scope; **no asset id invented**, asserted; docs/07 §1's ethics rules wherever they can be measured; the ×2.6 cap against what V1 reaches *and* against a simulated second income pass; the uncapped slot channel measured across the slot track; Fossil Packs proven to scale to the buyer at both ends of the curve; server purchases; VIP's offline rate all the way through to the hourly payout; every gamepass effect proven to declare a combination mode; and both store orders proven to cover the catalogue exactly once |
 | `step20_spec` (123) | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant reaching its cap, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
 | `step19_spec` (263) | UTC day and week boundaries against real calendar dates and every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and full reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `step18_spec` (98) | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report a result, rules 8 and 11 each driven to a real failure, and `TierAbove` against the zone weights the crater reads |
@@ -1160,6 +1224,49 @@ Bugs the specs caught before they shipped:
     "250 K" on the confirm screen and losing 700 K of progress has a fair
     complaint — which is why the confirm screen now names the re-buy cost
     explicitly.
+
+36. **VIP would have earned 160 % offline — more than it earns playing.**
+    `ProductConfig.EffectTotal` decided additive-vs-multiplicative by looking
+    at the default it was handed: `default == 1` meant multiply, anything else
+    meant add. That is right for five of the eight effects and silently wrong
+    for `OfflineRate`, whose default is `Economy.OfflineRate` (0.60) and whose
+    VIP value is 1.0 — so it **added** them and paid 1.60.
+
+    The bug is the inference itself, not the arithmetic: a rule that reads a
+    caller's argument to guess a config's semantics is right by coincidence.
+    `ProductConfig.EffectModes` now declares `add`, `multiply` or `max` per
+    effect, `OfflineRate` is `max` (the best owned rate replaces the baseline
+    and two passes granting it do not stack), and a require-time assertion
+    fails any pass granting a numeric effect with no mode — so the V1.1 passes
+    cannot reintroduce this.
+
+37. **The ×2.6 stacking cap is correct, shipped, and currently unreached — and
+    it does not govern the channel that actually matters.** docs/07 §2 caps
+    "the combined multiplicative effect of all owned gamepasses on income" at
+    ×2.6. V1 ships six of the twelve passes and exactly one of them, Double
+    Income, touches that channel, so the whole catalogue multiplies to exactly
+    ×2.0 and `math.min` never binds. Same family as the ×40 mutation cap and
+    the 9 s raid hold: the doc describes the finished catalogue, V1 ships a
+    subset. The spec asserts what V1 reaches *and* that the cap trims a
+    simulated second income pass, so it will not rot.
+
+    Measuring the *player's* throughput rather than the per-dinosaur rate found
+    the more interesting half. The passes also buy +8 slots, and the slot
+    channel is additive and uncapped:
+
+    | Free player's slot level | Slots free / paid | Overall |
+    |---:|---|---:|
+    | 0 (brand-new account) | 4 / 12 | ×6.00 |
+    | 5 | 9 / 17 | ×3.78 |
+    | 12 | 16 / 24 | ×3.00 |
+    | 26 (track complete) | 30 / 38 | ×2.53 |
+
+    So the doc's ×2.6 is accurate for a player who has played — the advantage
+    converges on it — and the gap is widest on a fresh account, where the free
+    path has barely started. Left uncapped deliberately: capping slots would
+    mean confiscating placement space a player has already bought and built a
+    park around. Recorded in docs/07 §2 so it is a known shape rather than a
+    surprise found after launch.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

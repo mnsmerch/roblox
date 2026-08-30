@@ -128,6 +128,7 @@ local ProfileTemplate = {
 		ScreenEffects = true,
 		UiScale = 100,
 		AutoCollect = false,
+		SeenStoreNotice = false, -- docs/07 §1 rule 7; see GameConfig.SettingsSchema
 	},
 
 	-- ── Statistics (leaderboards, quests and analytics all read these) ──────

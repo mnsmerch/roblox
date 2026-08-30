@@ -102,6 +102,12 @@ Net.Events = {
 	-- ── Meta ───────────────────────────────────────────────────────────────
 	RequestSetSetting = { dir = "c2s", rate = 5, burst = 10, args = { "string", "any" } },
 	RequestTutorialStep = { dir = "c2s", rate = 3, burst = 5, args = { "number" } },
+	--[[
+		docs/07 §4's Thanks button. Added at Step 21: the frozen inventory had
+		no remote for it, and it is the one part of a server-wide purchase the
+		client initiates.
+	]]
+	RequestThanks = { dir = "c2s", rate = 2, burst = 3, args = { "number" } },
 
 	-- ── Server -> client ───────────────────────────────────────────────────
 	StateFull = { dir = "s2c" },
@@ -114,6 +120,8 @@ Net.Events = {
 	ChaseState = { dir = "s2c" },
 	IncomePopup = { dir = "s2c" },
 	TutorialState = { dir = "s2c" },
+	--- Announces a server-wide purchase and drives the Thanks button (Step 21).
+	ServerBoost = { dir = "s2c" },
 }
 
 --- RemoteFunctions yield and can hang a thread, so they are read-only and
