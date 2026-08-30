@@ -56,14 +56,18 @@ The whole tree appears. `default.project.json` in the repo root maps it.
 ## 3. Studio by hand (~45 minutes, once)
 
 `SETUP.md` has the complete tree and a file-by-file mapping table per step.
-Build the folders first, then paste in step order (1 → 6). The two things to get
+Build the folders first, then paste in step order (1 → 24). Three things to get
 right:
 
 - **Object types matter.** `Bootstrap` under `SAD_Server` is a **Script**; under
   `SAD_Client` it is a **LocalScript**. Everything else is a **ModuleScript**.
 - **`init.lua` means a child, not a sibling.** `DataService/init.lua` is the
   ModuleScript named `DataService`; `ProfileTemplate` and `Migrations` go
-  *inside* it. Same for `PlayerDataService` and `ParkService`.
+  *inside* it. Same for `PlayerDataService`, `ParkService` and every other
+  service folder.
+- **`DebugExploitClient` is a LocalScript and must be `Disabled`.** It goes
+  directly under `SAD_Client`, beside `Bootstrap` — not inside `Controllers`.
+  Rojo sets `Disabled` for you from its `.meta.json`.
 
 ---
 
@@ -97,7 +101,7 @@ You should see, in order:
 
 ```
 [SAD/S] ======== Steal a Dinosaur v0.1.0 starting ========
-[SAD/S][Net] Published 38 events and 4 functions
+[SAD/S][Net] Published 40 events and 4 functions
 [SAD/S] ======== Config validation ========
   ok      [R1] 4 zone weight vector(s) sum to 100000000
   ok      [R6] all 28 rollable zone x rarity combinations have species
@@ -113,45 +117,64 @@ You should see, in order:
 [SAD/C] ======== Client boot complete (N ms) ========
 ```
 
-**Zero errors and zero warnings is the pass condition.**
+…followed by a line from each of the 25 services and 19 controllers.
+
+**Zero errors is the pass condition.** Two warnings are *expected* and correct:
+
+```
+[SAD/S][PurchaseService] Ready, but 6 gamepass(es) and 8 product(s) have no AssetId…
+[SAD/S][LeaderboardService] No DataStore access for 'richest'…   (only without API access)
+```
+
+The first is deliberate — no asset id is invented anywhere in this project. The
+second disappears once Studio API access is on.
 
 On screen: you spawn inside your own park facing in, gate behind you, incubator
 row ahead, enclosure grid beyond, vault pedestals at the back. A Fossils chip
-top-left and five buttons along the bottom.
+top-left, five buttons along the bottom, rails down both sides, and Professor
+Rok hopping beside you with an arrow over your gate.
+
+> **Nothing below this line has actually been run.** Every step's expected
+> output in SETUP.md is derived from the code, not observed. The first Play test
+> is genuinely the first Play test — expect to find things, and tell me what
+> Output says rather than working around it.
 
 ---
 
-## What actually works today (Steps 1–6)
+## What is there to see (all 24 steps)
 
-| Works | Try it |
+Written, spec-covered, and **never run in Studio**. In roughly the order you
+will meet it:
+
+| | Try it |
 |---|---|
 | Data saves and loads | Set Fossils, stop, Play again — it persists |
 | Session locking | Same account in two servers is refused |
-| Schema migration + reconcile | Delete a field, rejoin, it comes back |
-| Content validation | Break a weight by 1 — the server refuses to boot |
-| State replication | Change Fossils server-side, watch the HUD count up |
-| The security boundary | Receipt ids are absent client-side |
-| Settings round trip | `RequestSetSetting` clamps, rejects, and persists |
-| Responsive HUD | Drag the viewport narrow, rails fold away |
-| 24 park plots | Two clients get two plots; leaving frees one |
-| Park occupancy | Walk through a gate, `ParkEntered` fires |
-| Grid ↔ world maths | Drop a marker on tile (4,4), it lands square |
-| Hub, 4 zones, 48 nests | Walk out of your park; read a nest sign's odds |
-| Egg claiming + respawn | Hold E on an egg; wait 45s and it comes back |
-| Placeholder art | 35 dinosaur models and 10 eggs generate themselves |
-| Stealing an egg | Hold E at a nest; it appears above your head |
+| Content validation | Break a rarity weight by 1 — the server refuses to boot |
+| Your park | You spawn inside it: incubators, enclosure grid, vault pedestals |
+| Hub, 4 zones, 48 nests | Walk out; read a nest sign's odds and risk skulls |
+| **The tutorial** | Professor Rok, one arrow, 12 beats — the first thing you'll see |
+| Stealing an egg | Hold E at a nest; it appears above your head, rarity flashes |
 | Carry weight | A Titan egg drops you from 20 to 11 studs/s |
-| Loose eggs | Press Q — anyone can grab it for 10 seconds |
-| Anti-cheat | Set your own WalkSpeed and get flagged, dropped, snapped back |
 | **The chase** | A dinosaur wakes, roars, and runs you down. Escape or trip over |
-| Zone difficulty | Frozen Valley guardians genuinely catch you; Jurassic Plains ones mostly do not |
 | **The loop closes** | Run home through your gate — SAFE! — and the egg is yours |
-| Incubation | Walk to a pad, watch the countdown — its length tells you the tier |
 | **The hatch** | Species, mutation and odds, all three revealed at once |
+| Placement and income | Drop it on a tile; Fossils tick up; tap the totem |
+| Upgrades | 🛒 — three boards, 14 tracks, prices you can actually afford |
+| Zones and teleports | Unlock Canyon, use the Obelisk, find a shrine |
+| **Raiding other players** | Two clients: hold to steal a placed dinosaur, get tagged |
+| Weather | Four weathers on an 8-minute roll; Blizzard shifts your mutation odds |
+| Server events | Meteor Impact, Stampede, Nest Frenzy, Amber Rain |
+| Quests, dailies, Index | ✅ 📖 🎁 on the left rail |
+| Rebirth | ♻️ — a keep / lose / gain screen before you delete your park |
+| The store | 💎 — browsable, honest, and every row reads COMING SOON |
+| Leaderboards | 🏆, and four pillars plus three gold statues west of the plaza |
+| Settings | ⚙️ — 13 rows, all generated from the schema |
+| The exploit sweep | `_G.SAD_DebugExploit.Run()` in Studio |
 
-**Not built yet:** placing dinosaurs, income, upgrades, stealing from players.
-Steps 12–24. The bottom-bar buttons log `No screen registered` —
-that warning is correct, the screens arrive in Step 13.
+**Known holes:** no minimap (the 🗺️ button and **M** do nothing — finding 46);
+no animations, sounds or real art (nothing invents an asset id anywhere); no
+localised zone hazards, so zone difficulty rests entirely on guardian speed.
 
 ---
 
@@ -165,6 +188,19 @@ rojo serve                        # then Connect in Studio
 ```
 
 plus ProfileStore and API access, then Play.
+
+**Expect the first Play to fail somewhere.** 95 files across 24 steps have never
+been loaded by Roblox once. The likely first three, in order:
+
+1. **`[SAD] ProfileStore is not installed`** — the boot aborts on purpose.
+   Install it, or set `GameConfig.UseMockDataInStudio = true` to look around
+   without it.
+2. **A `Boot aborted:` line naming one service.** `GameConfig.StrictBoot` is
+   `true`, so one bad service stops everything — deliberately, in Studio. The
+   line names the service and the phase (`require`, `Init` or `Start`).
+3. **A missing Roblox API or a changed signature.** Paste the error; do not
+   work around it. A wrong assumption about Roblox is exactly the thing the
+   offline specs cannot catch, and it is worth fixing at the source.
 
 The single most informative test is the one in `SETUP.md` under **Step 3**:
 change one rarity weight by 1 and watch the server refuse to boot with
