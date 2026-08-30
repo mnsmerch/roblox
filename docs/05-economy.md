@@ -185,8 +185,14 @@ dailies, gamepasses, statistics, badges, settings, Vault Slot count.
 
 **Anti-repetition rule.** Every rebirth grants a **Rebirth Cache**: one
 guaranteed egg of the highest rarity you have ever hatched, minus one tier
-(min Rare). So rebirth 8 hands a Mythic player an Epic egg immediately — you
+(min Rare). So a Mythic player restarts with a **Legendary** egg in hand — you
 never restart from literally nothing, and the early grind compresses each time.
+
+> This example previously said "Epic", which is two tiers below Mythic, not
+> one. The rule is authoritative and `RebirthConfig.CacheTiersBelowBest = 1`
+> implements it. If the more modest Epic is wanted instead, that constant is
+> the whole change — `tests/step20_spec.lua` asserts both readings so the
+> switch is a one-line edit with its consequence already described.
 
 ---
 

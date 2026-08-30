@@ -367,7 +367,7 @@ section("Is there always something to buy? (docs/05 §5)")
 	anything, which is the thing the constraint protects.
 
 	═══ THE HORIZON IS ONE REBIRTH RUN ═════════════════════════════════════════
-	`Upgrades` and `Defences` are both absent from RebirthConfig.Preserved, so
+	`Upgrades` and `Defences` are both in RebirthConfig.Reset, so
 	every rebirth wipes the tree and the player buys it again from level 0.
 	A run is therefore the only window in which "the cheapest un-maxed upgrade"
 	means anything, and docs/05 §8 puts Rebirth 1 at three hours.

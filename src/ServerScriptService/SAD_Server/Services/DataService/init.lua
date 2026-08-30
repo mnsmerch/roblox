@@ -374,4 +374,11 @@ function DataService.Start(injected)
 	end)
 end
 
+--[[
+	Exposed so RebirthService can assert its three classification lists cover
+	the schema. Read-only by convention: DataService is still the only thing
+	that writes through it.
+]]
+DataService.Template = ProfileTemplate
+
 return DataService

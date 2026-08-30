@@ -22,7 +22,8 @@ ReplicatedStorage
     │   ├── MutationConfig           (ModuleScript)  19 entries + weather modifiers
     │   ├── ZoneConfig               (ModuleScript)  10 zones, nests, unlock gates
     │   ├── UpgradeConfig            (ModuleScript)  18 tracks
-    │   ├── RebirthConfig            (ModuleScript)  costs, keeps, grants
+    │   ├── RebirthConfig            (ModuleScript)  costs, the three classification
+    │   │                                            lists, grants, the shared preview
     │   ├── WeatherConfig            (ModuleScript)  11 weathers (4 in V1); mutation
     │   │                                            weights stay in MutationConfig
     │   ├── EventConfig              (ModuleScript)  12 server events
@@ -85,7 +86,7 @@ ServerScriptService
         ├── QuestService             daily/weekly rolls, progress, claims
         │   └── RewardGrant          the one place a reward is paid out
         ├── DailyService             the 7-day chest and the streak
-        ├── RebirthService           rebirth validation + grants
+        ├── RebirthService           validation, the one-write reset, grants
         ├── IndexService             discovery, completion %, milestones
         ├── UpgradeService           upgrade/defence pricing, Buy and Buy Max
         ├── PurchaseService          ProcessReceipt, gamepass ownership cache

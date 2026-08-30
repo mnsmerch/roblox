@@ -351,15 +351,23 @@ eq("name tag at R0", RebirthConfig.NameTagFor(0).Id, "bone")
 eq("name tag at R7", RebirthConfig.NameTagFor(7).Id, "obsidian")
 eq("name tag at R50", RebirthConfig.NameTagFor(50).Id, "titan")
 
--- Vaulted dinosaurs and the Index surviving a rebirth is what makes players
--- willing to do a second one.
-local preserved = {}
-for _, key in ipairs(RebirthConfig.Preserved) do preserved[key] = true end
+--[[
+	Vaulted dinosaurs and the Index surviving a rebirth is what makes players
+	willing to do a second one.
+
+	Step 20 turned Preserved from an array into a keyed table of reasons, and
+	added Reset and Partial beside it, so that every profile field is
+	classified exactly once. The full coverage check lives in step20_spec;
+	these are the individual promises docs/05 §6 makes by name.
+]]
 for _, key in ipairs({ "Index", "DNA", "Settings", "Stats", "Gamepasses", "Tutorial", "Rebirths" }) do
-	ok("survives rebirth: " .. key, preserved[key] == true)
+	ok("survives rebirth: " .. key, RebirthConfig.Preserved[key] ~= nil)
 end
-for _, key in ipairs({ "Fossils", "Upgrades", "ZonesUnlocked", "Dinos" }) do
-	ok("resets on rebirth: " .. key, preserved[key] == nil)
+for _, key in ipairs({ "Fossils", "Upgrades", "Defences" }) do
+	ok("resets on rebirth: " .. key, RebirthConfig.Reset[key] ~= nil)
+end
+for _, key in ipairs({ "ZonesUnlocked", "Dinos" }) do
+	ok("partially reset: " .. key, RebirthConfig.Partial[key] ~= nil)
 end
 
 ------------------------------------------------------------------ validator

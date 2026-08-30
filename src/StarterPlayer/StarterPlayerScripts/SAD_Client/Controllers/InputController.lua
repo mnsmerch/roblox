@@ -64,6 +64,7 @@ local BINDINGS = {
 	{ Action = "ToggleTeleport", Priority = 200,
 	  Keys = { Enum.KeyCode.Five }, Gamepad = { Enum.KeyCode.ButtonY } },
 
+	{ Action = "ToggleRebirth", Priority = 200, Keys = { Enum.KeyCode.R } },
 	{ Action = "ToggleInventory", Priority = 200, Keys = { Enum.KeyCode.Tab } },
 	{ Action = "ToggleMap", Priority = 200,
 	  Keys = { Enum.KeyCode.M }, Gamepad = { Enum.KeyCode.ButtonSelect } },

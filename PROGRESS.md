@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 19 of 24 complete.** There are reasons to come back tomorrow. Awaiting the Studio Play tests before Step 20.
+## Status: **Step 20 of 24 complete.** The loop can be reset and re-run. Awaiting the Studio Play tests before Step 21.
 
 ## Completed
 
@@ -30,6 +30,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 17** — weather | 4 weathers, the 8-minute roll, local Lighting, 85 more assertions |
 | 2026-08-30 | **Step 18** — server events | Scheduler, 4 handlers, contribution rewards, 98 more assertions |
 | 2026-08-30 | **Step 19** — quests, dailies, Index | UTC days, streaks, milestones, 281 more assertions |
+| 2026-08-30 | **Step 20** — rebirth | The one-write reset, the shared preview, 124 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -54,7 +55,7 @@ accident. Updated at the end of every build step.
 | 17 | Weather | ✅ **done** |
 | 18 | Server events | ✅ **done** |
 | 19 | Quests, dailies, index | ✅ **done** |
-| 20 | Rebirth | ⬜ |
+| 20 | Rebirth | ✅ **done** |
 | 21 | Purchases | ⬜ |
 | 22 | Leaderboards | ⬜ |
 | 23 | Tutorial | ⬜ |
@@ -141,6 +142,7 @@ rebuilds this on every server start.
 | `Services/QuestService/RewardGrant` | ModuleScript | **The one place a reward is paid out** |
 | `Services/DailyService` | ModuleScript | The 7-day chest and the streak |
 | `Services/IndexService` | ModuleScript | Discovery, completion %, milestones and rarity sets |
+| `Services/RebirthService` | ModuleScript | Eligibility, the one-write reset, grants, the Cache |
 
 ```
 MutationService.Roll(player) -> mutation, mutation2?
@@ -458,6 +460,37 @@ that reads a reward table. Written three times, the rebirth scaling gets
 applied in two of them and the third pays a flat rate forever.
 
 ```
+RebirthConfig.Preserved / Reset / Partial     -- keyed tables of REASONS
+RebirthConfig.Validate(template) -> problem?  -- asserted at boot
+RebirthConfig.ZonesAfter(unlocked, rebirths, zoneConfig) -> kept, lost
+RebirthConfig.DinosAfter(data) -> kept
+RebirthConfig.CacheRarity(data, rarityConfig) -> rarityId?
+RebirthConfig.Preview(data, zoneConfig, rarityConfig) -> { Cost, Keeps, Loses, Gains }
+
+RebirthService.CanRebirth(player) -> ok, reason?, requirements
+RebirthService.Preview(player) -> preview
+RebirthService.Perform(player) -> ok, reason?
+RebirthService.Rebirthed  Signal(player, newCount)
+
+DataService.Template                          -- the ProfileTemplate, read-only
+```
+
+**Every profile field is classified exactly once.** `Preserved`, `Reset` and
+`Partial` must together cover the whole template, and `RebirthService` refuses
+to start if they do not. A new field cannot default to being destroyed — the
+same discipline the replication allowlist uses.
+
+**The preview is pure and shared.** `RebirthConfig.Preview` is what the confirm
+screen draws and what the reset performs. On the one screen where a player
+deletes their park on the strength of what it says, two implementations is a
+contract the game might not honour.
+
+**One write.** `Perform` decides everything first — what survives, what returns
+to its default, the Cache egg — and applies it in a single `UpdateKeys`
+callback that does no arithmetic and yields nowhere. There is no state the
+profile can be left in halfway.
+
+```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
 WildAIService.IsChasing(player) -> boolean
 WildAIService.GetActiveCount() -> number
@@ -578,6 +611,7 @@ client never hears about; there is no polling fallback by design.
 | `WeatherController` | ModuleScript | Lighting, locally, so it always reverts |
 | `QuestController` | ModuleScript | The quest board and the daily chest |
 | `IndexController` | ModuleScript | The book, one page per zone |
+| `RebirthController` | ModuleScript | The keep/lose/gain confirm screen |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -693,11 +727,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 70 | Added `Profile.BonusDinoSlots`, `BonusVaultSlots` and `Titles` | Index milestones and streak rewards grant permanent slots and cosmetic titles (docs/05 §7), and none of the three had anywhere to live. Step 21's gamepasses add to the same two counters rather than inventing a third source | docs/10 §1 |
 | 71 | `Stats.Luck` and `.MutLuck` now fold in active boosts, and take an optional `now` | A Luck Potion granted into `Boosts` that no stat reads is a reward that does nothing — the decorative failure this project keeps removing. Boosts are stored as an **expiry**, so an expired one contributes nothing without needing to be swept first: correctness does not depend on cleanup, which matters because the client computes stats too and cannot write to the profile | docs/05 §7 |
 | 72 | Two dead entries removed from `ConfigValidator.OPTIONAL_CONFIGS` | `Quest` and `Daily` were skip labels for a skip that never happened, because no rule read either config. After findings #29 and #30 — both about registered-but-inert validation — leaving them would have been the same decoration. Their invariants are asserted where they can fail loudly instead | — |
+| 73 | `RebirthConfig.Preserved` is now a keyed table of reasons, joined by `Reset` and `Partial` | An array of names cannot say *why*, and more importantly cannot be checked for coverage. The three tables must be the exact union of the profile template, asserted at boot — see finding #33 for what that caught | docs/05 §6, docs/09 §4 |
+| 74 | The keep/lose/gain preview lives in `RebirthConfig`, shared, not in the service | It is the one screen where a player deletes their park on the strength of what it says. Computing it twice is a contract the game might not honour. Same dependency-free-by-argument shape `ZoneConfig.UnlockCheck` uses | docs/13 §Step 20 |
+| 75 | Added `RebirthController` to the client roster (#19) | docs/09 §1's client list has no home for a confirm screen, and docs/13 §Step 20 asks for one. On the left rail rather than the bottom bar: rebirth is the rarest thing a player does and the one they should never press by accident | docs/09 §1 |
+| 76 | `DataService.Template` exposes the ProfileTemplate | `RebirthConfig.Validate` needs the schema to check its coverage against. Read-only by convention; DataService is still the only thing that writes through it | docs/09 §1 |
+| 77 | docs/05 §6's Rebirth Cache example corrected: a Mythic career caches a **Legendary**, not an Epic | The rule says "minus one tier" and the example says a Mythic player gets an Epic, which is minus two. The rule is the mechanism and the example is prose illustrating it, so the rule wins and `CacheTiersBelowBest = 1` stands. The generosity question is real, though — flipping that constant to 2 is the whole change, and the spec asserts both readings | docs/05 §6 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 80 source files and runs **3,428
-assertions** outside Roblox. Last run: **3,428 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 82 source files and runs **3,552
+assertions** outside Roblox. Last run: **3,552 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -713,6 +752,7 @@ assertions** outside Roblox. Last run: **3,428 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step20_spec` (123) | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant reaching its cap, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
 | `step19_spec` (263) | UTC day and week boundaries against real calendar dates and every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and full reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
 | `step18_spec` (98) | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report a result, rules 8 and 11 each driven to a real failure, and `TierAbove` against the zone weights the crater reads |
 | `step17_spec` (85) | The published weather table, the Clear share for V1 *and* for the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, Prime's chance proven flat while its count rises, and the two weather tables asserted to name the same set |
@@ -1063,6 +1103,63 @@ Bugs the specs caught before they shipped:
     expired boost contributes nothing *without needing to be cleaned up*.
     Correctness does not depend on a sweep — which matters because the client
     computes stats too and cannot write to the profile.
+
+33. **Eleven profile fields would have been destroyed by the first rebirth.**
+    `RebirthConfig.Preserved` was written at Step 3 as a list of names, and
+    everything absent from it reset. The schema has grown eleven fields since
+    — and every one of them defaulted to RESET simply by nobody having
+    mentioned it.
+
+    Six should not have:
+
+    - **`StealCooldowns`, `RevengeMarks`, `RobbedAt`, `GlobalStealAt`** — the
+      four anti-abuse fields from Step 15. Resetting them makes a rebirth a
+      way to clear a same-victim cooldown, the 90-second global cooldown, and
+      the Mercy Shield history that protects a player being farmed. That is
+      the most consequential: a cooldown a rebirth can clear is not a cooldown.
+    - **`BonusDinoSlots`, `BonusVaultSlots`, `Titles`** — permanent grants
+      from Index milestones and streaks, which themselves never reset. Losing
+      them means "permanent" was only true until the next rebirth.
+    - **`Shrines`** — map knowledge, the same category as the Index.
+    - **`Boosts`** — an active Luck Potion, often minutes old.
+
+    docs/13 calls a half-applied rebirth "the worst bug in the game", and this
+    is the shape it actually takes: not a torn write, but a field nobody
+    decided about. Fixed structurally rather than by fixing the list —
+    `Preserved`, `Reset` and `Partial` must now be the exact union of the
+    profile template, with a reason on every entry, and `RebirthService`
+    refuses to start if they are not. A field added in a later step cannot
+    default to being destroyed.
+
+    Same discipline the replication allowlist has used since Step 4. It is
+    worth noting that the allowlist *did* catch every one of these fields at
+    the time they were added, because it asserts coverage; the rebirth list
+    did not, because it did not.
+
+34. **docs/05 §6's Rebirth Cache rule and its example disagree.** The rule is
+    "minus one tier (min Rare)"; the example is "rebirth 8 hands a Mythic
+    player an Epic egg", which is minus **two**. Mythic − 1 is Legendary.
+
+    The rule wins — it is the mechanism, and `CacheTiersBelowBest = 1` has
+    implemented it since Step 3 — so the doc's example is corrected rather
+    than the config. But the generosity question is a real design call: a free
+    Legendary every rebirth is a lot more than a free Epic. Flipping that
+    constant to 2 is the whole change, and the spec asserts both readings so
+    the consequence of switching is already written down.
+
+35. **A V1 rebirth costs 700 K, not the 250 K it advertises.** docs/05 §6 says
+    zone unlocks reset "above the highest rebirth-gated zone you qualify for".
+    No V1 zone is rebirth-gated — Zone 5 is the first and it is V1.1 — so a
+    rebirth returns the player to the free zone and Canyon, Swamp and Frozen
+    must be re-bought for 450 K on top of the 250 K rebirth itself.
+
+    That is the design's own rule applied to the content that exists, so it is
+    recorded rather than changed, and it corrects itself the moment Zone 5
+    ships: from then on the floor rises with the rebirth count and a rebirth
+    re-locks nothing. Worth knowing before launch, because a player reading
+    "250 K" on the confirm screen and losing 700 K of progress has a fair
+    complaint — which is why the confirm screen now names the re-buy cost
+    explicitly.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

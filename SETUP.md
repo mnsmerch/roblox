@@ -562,6 +562,28 @@ guard that makes the same omission impossible to repeat.
 
 ---
 
+## Step 20 — rebirth
+
+| Studio object | Source file |
+|---|---|
+| `Services/RebirthService` | `src/.../Services/RebirthService/init.lua` *(new)* |
+| `SAD_Client/Controllers/RebirthController` | `src/.../Controllers/RebirthController.lua` *(new)* |
+| `SAD_Shared/Config/RebirthConfig` | *(re-paste — three lists, `Validate`, the shared preview)* |
+| `Services/DataService` | *(re-paste — exposes `Template`)* |
+| `SAD_Client/Controllers/HUDController` | *(re-paste — the ♻️ rail button)* |
+| `SAD_Client/Controllers/InputController` | *(re-paste — R)* |
+| `SAD_Client/Bootstrap` | *(re-paste — `RebirthController` in the roster)* |
+
+**Re-paste `RebirthConfig` before anything else.** `Preserved` is no longer an
+array of names — it is a keyed table of *reasons*, alongside two new tables
+`Reset` and `Partial`, and `RebirthService` refuses to start unless the three
+together cover every field in the profile exactly once.
+
+`RebirthController` is **new to the client roster** — re-paste the client
+`Bootstrap` or it will never load.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -2345,9 +2367,123 @@ print(RG.Give(p, { Fossils = 1000, Dna = 25 }, "test"))  -- 10,000 Fossils, 25 D
 
 ---
 
+## Step 20 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][RebirthService] Ready. Rebirth 1 costs 250K and 3 dinosaur(s)
+[SAD/C][RebirthController] Ready. Rebirth 1 costs 250K
+```
+
+If the server refuses to start naming a profile field, that is the coverage
+assertion working — every field must be classified as Preserved, Reset or
+Partial before a rebirth is allowed to touch the profile.
+
+**2. The confirm screen.** ♻️ on the left rail, or **R**. Three columns: what
+you keep, what you lose, what you gain. The button greys and says *what* is
+short — `NEED 180K MORE` or `NEED 2 MORE DINOSAURS`.
+
+Every number on it comes from `RebirthConfig.Preview`, the same function the
+reset uses. That matters here more than anywhere else in the game: it is the
+one screen where a player deletes their park on the strength of what it says.
+
+**3. Rebirth at exactly the threshold.** docs/13's test:
+
+```lua
+local PDS = require(game.ServerScriptService.SAD_Server.Services.PlayerDataService)
+local RB = require(game.ServerScriptService.SAD_Server.Services.RebirthService)
+local p = game.Players:GetPlayers()[1]
+
+PDS.Update(p, function(d) d.Fossils = 249999 end, "test")
+print(RB.CanRebirth(p))    -- false, 250K Fossils
+PDS.Update(p, function(d) d.Fossils = 250000 end, "test")
+print(RB.CanRebirth(p))    -- true (with 3 dinosaurs)
+```
+
+**4. Vaulted dinosaurs and the Index survive.** The heart of it:
+
+```lua
+local Steal = require(game.ServerScriptService.SAD_Server.Services.StealService)
+Steal.Vault(p, "<uid>", 1)
+
+local before = PDS.Get(p)
+local index, dna = 0, before.DNA
+for _ in before.Index do index += 1 end
+
+print(RB.Perform(p))
+
+local after = PDS.Get(p)
+print(after.Rebirths, after.Fossils)          -- 1, 0
+print(after.Dinos)                             -- only the vaulted one
+local n = 0 for _ in after.Index do n += 1 end
+print(n == index, after.DNA == dna)             -- true, true
+```
+
+**5. The anti-abuse fields survive too.** The four that were unclassified
+until this step — without them, a rebirth clears a same-victim cooldown:
+
+```lua
+PDS.Update(p, function(d) d.StealCooldowns["999"] = os.time() + 600 end, "test")
+-- ...rebirth...
+print(PDS.Get(p).StealCooldowns["999"])   -- still there
+```
+
+**6. The multiplier applies.** docs/13's test:
+
+```lua
+local Stats = require(game.ReplicatedStorage.SAD_Shared.Modules.Stats)
+local Econ = require(game.ReplicatedStorage.SAD_Shared.Modules.Economy)
+local d = PDS.Get(p)
+print(Econ.IncomeOf(next(d.Dinos) and d.Dinos[next(d.Dinos)], d))
+-- 15% higher than the same dinosaur at rebirth 0
+```
+
+**7. A mid-carry rebirth is rejected.** The other docs/13 test. Pick up a wild
+egg, then:
+
+```lua
+print(RB.CanRebirth(p))   -- false, not carrying anything
+```
+
+Same with a stolen dinosaur on your back. Both would be destroyed by the reset
+with no record of them anywhere.
+
+**8. The Rebirth Cache.** After the reset, check storage:
+
+```lua
+for uid, egg in PDS.Get(p).Eggs do print(uid, egg.Rarity, egg.Origin) end
+```
+
+One egg, `Origin = "rebirth"`, one tier below the best rarity you have **ever**
+hatched (floor Rare) — read from `Stats.RarestRarity`, which is Preserved, so
+it scales with a career rather than the run just deleted.
+
+**9. Zones re-lock.** In V1 no zone is rebirth-gated, so a rebirth returns you
+to the free zone and Canyon/Swamp/Frozen must be re-bought — 450 K on top of
+the 250 K rebirth. That is docs/05 §6's own rule; it stops applying the moment
+Zone 5 ships, because from then on the floor rises with the rebirth count.
+
+**10. One write.** Watch Output during a rebirth: exactly one profile write for
+the transaction itself, then an immediate save. There is no moment at which the
+Fossils are gone and the multiplier has not arrived.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Server refuses to boot naming a profile field | The coverage assertion working — classify it in `RebirthConfig` |
+| A cooldown or streak resets on rebirth | That field is in `Reset` and should be in `Preserved` |
+| A vaulted dinosaur is lost | `BonusVaultSlots` not counted, or `Dinos` treated as fully Reset |
+| The preview promises more than the reset keeps | Something computing the preview separately instead of calling `RebirthConfig.Preview` |
+| A rebirth is lost to a crash seconds later | `PlayerDataService.Save` not called immediately after |
+| Rebirth succeeds while carrying | `EggService.GetCarryCount` / `StealService.IsCarrying` not checked |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **3,428 assertions** without Studio:
+Syntax-checks every source file and runs **3,552 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -2376,6 +2512,7 @@ Fetches the Luau CLI on first run.
 | `tests/step17_spec.lua` | The published weather table, the Clear share for V1 *and* the full eleven, the roll distribution over 20,000 picks, the mutation shift over 20,000 hatches per weather, the ×40 cap proven to trim the one V1 interaction that reaches it, and Prime's chance proven flat while its count rises |
 | `tests/step18_spec.lua` | The published event table, the clamped no-repeat rule simulated over 2,000 rolls, the participation-reward floor for an earning player and a broke one, double-collection modelled as the statement order it depends on, every ConfigValidator rule asserted to actually report, rules 8 and 11 each driven to a failure, and `TierAbove` against the zone weights the crater reads |
 | `tests/step19_spec.lua` | UTC day and week boundaries against real calendar dates, every day of a week walked, streaks through a 40-day run and a break, the published 7-day chest with its rebirth scaling, quest id uniqueness across both pools, the seeded roll's determinism and reachability, double-claim modelled as the statement order it depends on, and the Index denominator proven to be what exists rather than what is planned |
+| `tests/step20_spec.lua` | The three classification lists proven to cover the schema exactly once and driven to a failure in each of their three ways, docs/05 §6's keep/lose/gain lists by name, the cost curve and every capped grant, the Rebirth Cache against both readings of a contradictory doc, which zones survive with and without a rebirth-gated zone in the world, vault survival under a binding slot count, and the preview reconciled against what the player actually owns |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

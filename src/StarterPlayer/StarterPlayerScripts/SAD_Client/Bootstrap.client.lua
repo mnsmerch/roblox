@@ -45,6 +45,7 @@ local CONTROLLER_ORDER = {
 	"ShopController", -- Step 13
 	"TeleportController", -- Step 14
 	"WeatherController", -- Step 17
+	"RebirthController", -- Step 20
 	"MinimapController", -- Step 14
 	"IndexController", -- Step 19
 	"QuestController", -- Step 19
