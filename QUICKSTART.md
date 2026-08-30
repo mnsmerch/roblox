@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 98 source files and runs **5,097 assertions**: the economy
+Syntax-checks all 98 source files and runs **5,111 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 

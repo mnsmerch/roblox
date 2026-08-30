@@ -3142,7 +3142,7 @@ file in the same commit.
 
 ## Running the offline specs
 
-Syntax-checks every source file and runs **5,097 assertions** without Studio:
+Syntax-checks every source file and runs **5,111 assertions** without Studio:
 
 ```bash
 ./tests/run.sh

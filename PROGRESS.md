@@ -1089,8 +1089,8 @@ current value, then on every change at or under that path. No polling anywhere.
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 98 source files and runs **5,097
-assertions** outside Roblox. Last run: **5,097 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 98 source files and runs **5,111
+assertions** outside Roblox. Last run: **5,111 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed
@@ -1117,6 +1117,7 @@ been run there.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `instance_fields_spec` (14) | The client source read as text, flagging any capitalised field written onto a local that holds an Instance. Exists because no spec can construct an `Instance` outside Roblox, and this bug killed the client twice |
 | `animation_spec` (329) | docs/15 §2's 29 clips by name and group in both directions, its priority order as an ordering, every procedural stand-in proven to exist, every motion bounded and every motion proven reachable, all 20 archetypes tuned and the spread measured, the gait thresholds driven at both boundaries and every archetype proven to read as running at its own chase speed, and every one of `ChaseConfig`'s nine abilities proven to map to a real clip |
 | `minimap_spec` (106) | `ZoneConfig.ZoneAt` driven at every zone's centre, both edges, all four corners and the boundary itself; the projection proven to land every zone corner, all 24 plots, the hub edge and the Obelisk inside the map with the ten-zone build-out checked too; and the position boundary that stops the map leaking a player the server had not announced |
 | `step24_spec` (570) | docs/14's 46 events asserted by name and group in both directions, the three-custom-field limit with `BuildFields` handed six attributes, the onboarding funnel mapped forward onto real tutorial beats with no two sharing one, all fifteen economy tags with their source/sink direction, sampling measured over 20,000 ids and proven stable per player, the settings schema proven renderable and matched to the template's defaults in both directions, and four of docs/12 §4's nine launch gates actually decided |
@@ -1787,8 +1788,22 @@ Bugs the specs caught before they shipped:
 
     Fixed by holding each panel's children in a plain table beside the
     instance — which is the shape `Widgets.Chip` already returned, and the shape
-    every controller written after Step 5 uses. `HUDController` was the only
-    offender; grepped, not assumed.
+    every controller written after Step 5 uses.
+
+    **Fixed twice.** The first pass grepped for the three panel names in the
+    error and fixed six assignments; the next Studio run died on the seventh,
+    `chaseBanner.Label`, in the same function. Grepping for the symptom finds
+    the symptom. `tests/instance_fields_spec.lua` now reads the client source as
+    text and flags any capitalised field written onto a local that holds an
+    Instance, checked against an allowlist of the properties this project
+    actually assigns — 39 writes across three files, and the only reason a
+    third run will not find an eighth.
+
+    That spec had its own moment: its first run flagged `carryPanel.Rarity`
+    inside the comment explaining that `carryPanel.Rarity` throws, so it now
+    strips comments first. And the comment explaining that a nested closing
+    double-bracket ends a block comment early was itself ended early by the two
+    characters it named.
 
     The general rule, since the inconsistency is what invited it: `Widgets.Panel`
     returns a bare Instance while the other widgets return handle tables. The

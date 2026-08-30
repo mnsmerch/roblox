@@ -70,6 +70,7 @@ local carryPanel
 local carryParts = {}
 local flashParts = {}
 local hatchParts = {}
+local chaseParts = {}
 
 local chaseBanner, chaseVignette
 local flashPanel
@@ -355,7 +356,7 @@ local function buildChase()
 		Parent = UIController.Layer("prompt"),
 	})
 
-	chaseBanner.Label = label
+	chaseParts.Label = label
 end
 
 --[[
@@ -626,9 +627,9 @@ function HUDController.SetChase(info)
 	chaseVignette.Visible = true
 
 	if info.Caught then
-		chaseBanner.Label.Text = "CAUGHT!"
+		chaseParts.Label.Text = "CAUGHT!"
 	else
-		chaseBanner.Label.Text = string.format("RUN! %s", string.upper(info.DisplayName or "SOMETHING"))
+		chaseParts.Label.Text = string.format("RUN! %s", string.upper(info.DisplayName or "SOMETHING"))
 	end
 end
 
