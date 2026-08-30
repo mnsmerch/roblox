@@ -256,7 +256,7 @@ in `CONTROLLER_ORDER`.
 | `Services/ParkService` | `src/.../ParkService/init.lua` *(new)* |
 | `Services/ParkService/PlotBuilder` | `src/.../ParkService/PlotBuilder.lua` *(new)* |
 
-**Nothing goes in Workspace.** All 24 plots are generated at boot into
+**Nothing goes in Workspace.** All 6 plots are generated at boot into
 `Workspace/SAD_World/ParkPlots`, and the previous ring is destroyed on each
 run — so a Studio re-run never leaves a duplicate behind.
 
@@ -1176,7 +1176,7 @@ whole reason `SAD_UI` lives in `PlayerGui` rather than `StarterGui`.
 **1. Boot.** Play. Expect:
 
 ```
-[SAD/S][ParkService] Built 24 plots at radius 573 in N ms
+[SAD/S][ParkService] Built 6 plots at radius 286 in N ms
 [SAD/S][ParkService] Assigned YourName to Plot01
 [SAD/S][ParkService] Occupancy sampling at 4 Hz
 ```
@@ -3142,7 +3142,7 @@ file in the same commit.
 
 ## Running the offline specs
 
-Syntax-checks every source file and runs **5,111 assertions** without Studio:
+Syntax-checks every source file and runs **5,076 assertions** without Studio:
 
 ```bash
 ./tests/run.sh

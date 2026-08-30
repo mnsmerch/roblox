@@ -35,8 +35,8 @@ GameConfig.StrictBoot = true
 GameConfig.DebugTools = true
 
 -- ── World ───────────────────────────────────────────────────────────────────
-GameConfig.MaxPlayers = 24
-GameConfig.ParkPlotCount = 24
+GameConfig.MaxPlayers = 6
+GameConfig.ParkPlotCount = 6
 
 -- ── Server tick rates (Hz) ──────────────────────────────────────────────────
 GameConfig.StateFlushHz = 5 -- coalesced StateDelta flush

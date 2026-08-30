@@ -106,7 +106,7 @@ time and disappears permanently after step 10.
 | # | Beat | Time | On-screen text | What it teaches |
 |---|---|---|---|---|
 | 1 | Spawn directly *inside your own empty park*, gate open, big glowing arrow | 0:00 | "This is YOUR park!" | Ownership |
-| 2 | Arrow points out the gate to Jurassic Plains (**202–1,348 studs**, see below) | 0:10 | "Follow me!" | The world is close |
+| 2 | Arrow points out the gate to Jurassic Plains (**239–811 studs**, see below) | 0:10 | "Follow me!" | The world is close |
 | 3 | Walk to a highlighted **Starter Nest** with one green egg | 0:25 | "See that egg? TAKE IT." | The verb |
 | 4 | Hold E / tap the button to grab | 0:35 | Rarity flash: **COMMON** | Reveal #1 |
 | 5 | A cartoon Parasaurolophus honks and chases (deliberately slow, cannot catch you on the first steal) | 0:38 | **"RUN!!!"** full-screen | The pillar |
@@ -127,14 +127,17 @@ time and disappears permanently after step 10.
 - Completion is tracked (`TutorialCompleted`); target **> 80 %**.
 
 **Beat 2's distance, measured (Step 23).** The table said 25 studs. The blockout
-puts the park ring at 573 and Jurassic Plains' near edge at 775, so the walk is
-**202 studs from the closest plot and 1,348 from the furthest** — 10 seconds
-against 67, at walkspeed 20, against the 15 seconds this beat is budgeted.
+puts the park ring at 286 and Jurassic Plains' near edge at 525, so the walk is
+**239 studs from the closest plot and 811 from the furthest** — 12 seconds
+against 41, at walkspeed 20, against the 15 seconds this beat is budgeted.
+
+(It was 202 to 1,348 — 67 seconds at worst — while the ring held 24 plots. Six
+plots halved every radius in the game; see PROGRESS.md finding 53.)
 
 Plots are therefore claimed nearest-the-free-zone-first rather than in index
 order (`ParkConfig.PlotSearchOrder`). That does not reduce walking — a full
-server hands out all 24 plots either way — it front-loads the short walks, and
-measured, the first eight joiners walk 33 % less than index order sent them. The
+server hands out all six plots either way — it front-loads the short walks, and
+measured, the sort never sends an early joiner further and is 12–18 % shorter across the middle of the ring. The
 worst case is unchanged and no plot ordering can change it: fixing that is a
 level-design decision (a second Plains entrance, or the tutorial granting an
 Obelisk hop). See PROGRESS.md finding 42.

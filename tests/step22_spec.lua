@@ -444,9 +444,9 @@ section("The Colosseum fits in the plaza")
 	numbers come from WorldBuilder; the constraints come from ZoneConfig and
 	ParkConfig.
 ]]
-local COLOSSEUM_RADIUS = 250
-local STATUE_RADIUS = 195
-local BONE_MARKET_RADIUS = 90
+local COLOSSEUM_RADIUS = 160
+local STATUE_RADIUS = 130
+local BONE_MARKET_RADIUS = 60
 
 local plotInnerEdge = ParkConfig.RingRadius() - ParkConfig.PlotSize * 0.5
 print(string.format("  plaza reaches %d; the park ring's inner edge is %.0f",

@@ -11,7 +11,7 @@
 
 	═══ THE GRID IS MATHEMATICAL ════════════════════════════════════════════
 	docs/13 called for 64 tile PARTS per plot. That is 1,536 anchored parts
-	across 24 plots to express what is a coordinate transform, and it is the
+	across the plot ring to express what is a coordinate transform, and it is the
 	kind of thing that quietly costs a mobile player ten frames a second.
 
 	One textured GridSurface part shows the grid; TileToOffset/OffsetToTile do
@@ -23,19 +23,52 @@
 
 local ParkConfig = {}
 
-ParkConfig.PlotCount = 24
+--[[
+	═══ SIX PARKS, NOT TWENTY-FOUR ═════════════════════════════════════════════
+	This was 24, and 24 was wrong. The first Studio session showed why in one
+	screenshot: a ring of tiny plots stretching to the horizon across an empty
+	plain, because `RingRadius` is DERIVED from this number - 24 plots needed
+	573 studs of radius, which put the zone ring at 950 and made the walk to
+	Jurassic Plains up to 1,348 studs (finding 42).
+
+	Six is what the games this one is aimed at actually run: Grow a Garden
+	around 8, Steal an Egg around 6. Small enough that every park is a place you
+	can see from the plaza and recognise, which is what docs/02 §1.1's "standing
+	in the plaza you can see every other player's park skyline at once" was
+	always for. At 24 they were dots.
+
+	Everything follows: the ring halves to 286, the plaza with it, and the
+	longest walk to a zone drops from 1,348 studs to 761.
+
+	`GameConfig.MaxPlayers` must equal this - one plot per player, asserted at
+	boot, because a 7th player on a 6-plot server has nowhere to live.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+ParkConfig.PlotCount = 6
 
 -- ── Plot footprint ──────────────────────────────────────────────────────────
 
 ParkConfig.PlotSize = 120 -- studs, square
-ParkConfig.PlotGap = 30 -- clearance between neighbouring plots
+--[[
+	Widened from 30 with the drop to six plots, and for a specific reason: the
+	ring radius is derived from `PlotCount x (PlotSize + PlotGap)`, so six plots
+	at the old 30-stud gap would put the ring at 143 and leave a plaza of 83 -
+	too small for the Bone Market, the Colosseum and the Obelisk that already
+	stand in it.
+
+	At 180 the six parks read as separate islands around a plaza big enough to
+	hold what docs/02 §1.1 puts there. The parks themselves are unchanged: the
+	interior grid is sized from `GridTiles x TileSize`, not from `PlotSize`.
+]]
+ParkConfig.PlotGap = 180 -- clearance between neighbouring plots
 ParkConfig.BaseThickness = 2
 
 --[[
-	Ring radius is DERIVED, not chosen. 24 plots each 120 wide with 20 studs of
-	clearance need 3,360 studs of circumference, so the ring has to sit at
-	3360 / 2pi. Picking a radius by hand is how plots end up overlapping the
-	moment somebody changes PlotCount.
+	Ring radius is DERIVED, not chosen. Six plots each 120 wide with 180 studs of
+	clearance need 1,800 studs of circumference, so the ring sits at 1800 / 2pi
+	= 286. Picking a radius by hand is how plots end up overlapping the moment
+	somebody changes PlotCount - and it is why dropping 24 to 6 resized the
+	whole world correctly without a single other number being retuned by hand.
 ]]
 function ParkConfig.RingRadius(): number
 	local circumference = ParkConfig.PlotCount * (ParkConfig.PlotSize + ParkConfig.PlotGap)
@@ -201,11 +234,17 @@ end
 	slot instead. Plots fill outward from the shortest walk.
 
 	Be precise about what that buys, because it is easy to overclaim: it does
-	NOT reduce walking. A full server hands out all 24 plots either way, and the
+	NOT reduce walking. A full server hands out every plot either way, and the
 	measured average over the whole ring is identical to the stud. What it does
-	is FRONT-LOAD the short walks - measured, the first eight joiners walk 34%
-	less than index order would send them - and servers are rarely full, so the
-	person who joins into a half-empty one is who this is for.
+	is FRONT-LOAD the short walks: measured on the six-plot ring, it never sends
+	an early joiner further than index order would, and is 12-18% shorter across
+	the middle of it. Servers are rarely full, so the person joining a half-empty
+	one is who this is for.
+
+	It is NOT strictly better at every count - on six plots the first two joiners
+	tie, because plots 1 and 2 in index order happen to be as close to the free
+	zone as the sorted pick. The spec asserts the honest claim rather than the
+	tidy one.
 
 	It does not fix the worst case either: the twenty-fourth player still walks
 	the long way, and no plot ordering can change that. That one is a

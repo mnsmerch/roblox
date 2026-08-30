@@ -30,7 +30,7 @@ Vector3MT.__eq = function(a, b) return a.X == b.X and a.Y == b.Y and a.Z == b.Z 
 Vector3 = { new = v3, zero = v3(0, 0, 0) }
 Color3 = { fromHex = function(hex) return { Hex = hex } end }
 
---@INJECT ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua@
+--@INJECT ParkConfig=src/ReplicatedStorage/SAD_Shared/Config/ParkConfig.lua GameConfig=src/ReplicatedStorage/SAD_Shared/Config/GameConfig.lua@
 
 local passed, failed = 0, 0
 local function eq(label, got, want)
@@ -69,7 +69,22 @@ local biggerRadius = ParkConfig.RingRadius()
 ok("radius grows with plot count", biggerRadius > radius)
 ok("48 plots still do not overlap", ParkConfig.NeighbourChord() > ParkConfig.MinimumSeparation())
 ParkConfig.PlotCount = baseCount
-eq("plot count restored", ParkConfig.PlotCount, 24)
+--[[
+	═══ ONE PLOT PER PLAYER ════════════════════════════════════════════════════
+	The ring dropped from 24 plots to 6 after the first Studio session showed a
+	horizon of tiny parks across an empty plain. Three numbers have to move
+	together for that, and two of them are ours.
+	═══════════════════════════════════════════════════════════════════════════
+]]
+eq("six plots, per the reference games", ParkConfig.PlotCount, 6)
+eq("GameConfig agrees about the count", GameConfig.ParkPlotCount, ParkConfig.PlotCount)
+ok("no player can join without a plot", GameConfig.MaxPlayers <= ParkConfig.PlotCount)
+print(string.format("  %d plots, %d max players, ring radius %.0f",
+	ParkConfig.PlotCount, GameConfig.MaxPlayers, ParkConfig.RingRadius()))
+
+-- Against what it saved, not against a literal: the literal was 24 and went
+-- stale the moment the ring dropped to six.
+eq("plot count restored", ParkConfig.PlotCount, baseCount)
 
 ------------------------------------------------------------------ grid
 section("Tile round trip")

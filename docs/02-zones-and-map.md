@@ -26,10 +26,10 @@ count cannot silently overlap anything:
 
 | Ring | Extent | Derived from |
 |---|---|---|
-| Hub plaza | 0 → 520 | reaches the park ring's inner edge |
-| Park ring | 513 → 633 | `24 × (120 + 30) ÷ 2π` = 573 centre |
-| Walk | 633 → 775 | 142 studs of open ground |
-| Zone ring | 775 → 1125 | 950 centre, zones 350 across |
+| Hub plaza | 0 → 226 | reaches the park ring's inner edge |
+| Park ring | 226 → 346 | `6 × (120 + 180) ÷ 2π` = 286 centre |
+| Walk | 346 → 525 | 179 studs of open ground |
+| Zone ring | 525 → 875 | 700 centre, zones 350 across |
 
 Zones occupy **10 reserved slots** even though V1 fills four, so zones 5–10 drop
 into their eventual positions without moving a landmark a player has learned.
@@ -43,13 +43,25 @@ neighbouring zones still clear each other by 168 studs — asserted in
 | Landmark | Purpose | Placement |
 |---|---|---|
 | **Spawn Plaza** | A giant amber-encased fossil; players spawn here | dead centre |
-| **Park Ring** | 24 park plots in a circle facing inward, each with a numbered arch | inner ring |
+| **Park Ring** | 6 park plots in a circle facing inward, each with a numbered arch | inner ring |
 | **The Bone Market** | Upgrade shop, boost shop, gamepass board | north of plaza |
 | **The Fossil Lab** | Sell / Fusion / DNA / mutation reroll | east |
 | **Leaderboard Colosseum** | 8 leaderboards + 3 golden statues of the server's top players | west |
 | **Event Arena** | Sunken bowl where map-centre events spawn | south |
 | **Signpost Ring** | 10 lit signposts, one per zone, showing unlock cost + best rarity | outer edge |
 | **Teleport Obelisk** | Fast-travel to any discovered zone | beside spawn |
+
+*(**Six plots, not 24.** The first Studio session showed why: a ring of tiny
+parks stretching to the horizon across an empty plain. `RingRadius` is derived
+from the plot count, so 24 plots forced a 573-stud ring, a 520-stud plaza, a
+950-stud zone ring, and a walk to Jurassic Plains of up to 1,348 studs — 67
+seconds against a beat budgeted at 15. Six is what the games this one is aimed
+at run: Grow a Garden around 8, Steal an Egg around 6. It also makes "standing
+in the plaza you can see every other player's park skyline at once" true, which
+at 24 it was not — they were dots. Everything followed: ring 286, plaza 226,
+zone ring 700, longest walk 811.*
+
+*Server size must match: `MaxPlayers = 6` in Game Settings, asserted at boot.)*
 
 *(V1 builds **4** pillars, one per shipped board — docs/12's Richest, Highest
 Income, Most Eggs Stolen, Highest Rebirth — plus all 3 statues. The arc spacing
@@ -171,16 +183,18 @@ A nest is a `Model` at a `NestAnchor` with:
 
 ## 3. Player park plots
 
-24 plots ringing the hub, assigned on join, released on leave, **generated
+6 plots ringing the hub, assigned on join, released on leave, **generated
 procedurally** by `PlotBuilder` — 24 identical plots is exactly what you do not
-want hand-placed in a `.rbxl`: it cannot be diffed, a fix has to be applied 24
-times, and changing the ring radius means moving everything.
+want hand-placed in a `.rbxl`: it cannot be diffed, a fix has to be applied to
+every plot, and changing the ring radius means moving everything.
 
-The ring radius is **derived**, not chosen: 24 plots each 120 wide with 30 studs
-of clearance need 3,600 studs of circumference, so the ring sits at 3600 ÷ 2π ≈
-**573**. Picking a radius by hand is how plots overlap the moment `PlotCount`
-changes. `tests/step6_spec.lua` asserts non-overlap via a separating-axis test
-at both 24 and 48 plots.
+The ring radius is **derived**, not chosen: 6 plots each 120 wide with 180 studs
+of clearance need 1,800 studs of circumference, so the ring sits at 1800 ÷ 2π ≈
+**286**. Picking a radius by hand is how plots overlap the moment `PlotCount`
+changes — and being derived is what let the drop from 24 plots to 6 resize the
+whole world correctly without a single other distance being retuned by hand.
+`tests/step6_spec.lua` asserts non-overlap via a separating-axis test at both
+the shipped count and 48 plots.
 
 A plot is a **flat 120×120 stud pad** with:
 

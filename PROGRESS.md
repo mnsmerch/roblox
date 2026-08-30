@@ -1065,7 +1065,7 @@ current value, then on every change at or under that path. No polling anywhere.
 | 100 | docs/08 §6's "the step auto-completes" ships as "the client keeps asking" | A client that could declare a step complete could declare the LAST one complete and take the grant. After 60 s the ask repeats rather than the client deciding; a player who has done the thing advances on the next ask, one who has not sees the enlarged arrow and the hint. The player-facing behaviour docs/08 describes is preserved; the authority is not moved | docs/08 §6 |
 | 101 | Beat 11 **tops the player up** to the first upgrade's price | docs/00's beat 10 shows "+120 Fossils!" and beat 11 says the upgrade "costs exactly what you now have"; the cheapest track is 800, so both cannot be literal. A top-up rather than a grant, so a player who earned 700 gets 100 and one who has 800 gets nothing — "exactly what you now have" stays true either way | docs/00 §3 |
 | 102 | The tutorial's skip egg is granted through `RewardGrant` | Step 19 made it "the one place a reward is paid out". A tutorial egg written straight into `Profile.Eggs` would skip the storage cap, the notification and the analytics that every other granted egg goes through | docs/05 §7 |
-| 103 | Added `ParkConfig.PlotSearchOrder`; plots are claimed nearest-the-free-zone-first | docs/00 §3 budgets 15 s for the walk out to Jurassic Plains and the blockout makes it 10–67 s depending on plot. Sorting the claim order front-loads the short walks — measured, the first eight joiners walk 33 % less. It does not reduce total walking and does not fix the worst case; see finding 42 | docs/00 §3, docs/02 §1.1 |
+| 103 | Added `ParkConfig.PlotSearchOrder`; plots are claimed nearest-the-free-zone-first | docs/00 §3 budgets 15 s for the walk out to Jurassic Plains and the blockout makes it 10–67 s depending on plot. Sorting the claim order front-loads the short walks: never worse for any joiner, and 12–18 % shorter across the middle of the ring. It does not reduce total walking and does not fix the worst case — the ring dropping to six plots did that; see findings 42 and 53 | docs/00 §3, docs/02 §1.1 |
 | 104 | Added `TutorialService` (server) and `TutorialController` (client) | docs/13 §Step 23 asks for "`TutorialController` + a small server validator in `PlayerDataService`". The validator is a service instead: it needs signals from `WildAIService` and `EconomyService`, a remote handler, and a boot-time coverage assertion, none of which belong in the data layer. `PlayerDataService` stays the thing that reads and writes profiles | docs/09 §1, docs/13 §Step 23 |
 | 105 | Added `AnalyticsConfig` as config module #20 | The event catalogue has to be assertable, and a catalogue written inline at forty call sites is not. It also holds the per-event field selection, which is a decision that should be made once and reviewable rather than by whoever wrote each call | docs/09 §1, docs/14 §1 |
 | 106 | `AnalyticsService` subscribes to existing Signals; **no analytics call was added to any other service** | docs/14 asks for ~46 events across twenty services. Sprinkled through them, every future change to those services is a silent chance to drop a log line. As subscriptions in one file, adding an event is one edit and `ValidateCoverage` reports any that has no source | docs/09 §1, docs/14 §1 |
@@ -1089,8 +1089,8 @@ current value, then on every change at or under that path. No polling anywhere.
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 98 source files and runs **5,111
-assertions** outside Roblox. Last run: **5,111 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 98 source files and runs **5,076
+assertions** outside Roblox. Last run: **5,076 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed
@@ -1657,8 +1657,9 @@ Bugs the specs caught before they shipped:
     buys, because it is easy to overclaim — it does **not** reduce walking. A
     full server hands out all 24 plots either way and the average over the whole
     ring is identical to the stud. What it does is front-load the short walks,
-    and measured, the first eight joiners walk 33 % less than index order sent
-    them. Servers are rarely full, so that is the case worth improving.
+    and measured, it never sends an early joiner further than index order would
+    and is 12–18 % shorter across the middle of the ring. Servers are rarely
+    full, so that is the case worth improving.
 
     The other half is not fixable in config and is left stated: the last joiner
     on a full server still walks the long way, and no plot ordering changes
@@ -1866,6 +1867,56 @@ Bugs the specs caught before they shipped:
     it.
 
     Caught by the adapter doing its job: one named error, gameplay unaffected.
+
+53. **Twenty-four parks was wrong, and one screenshot said so.** The first
+    session showed a ring of tiny plots stretching to the horizon across an
+    empty plain. The reference games run six to eight — Grow a Garden around 8,
+    Steal an Egg around 6.
+
+    It was never really a count problem. `ParkConfig.RingRadius` is **derived**
+    from `PlotCount × (PlotSize + PlotGap)`, so 24 plots forced a 573-stud park
+    ring, which forced a 520-stud plaza, which forced a 950-stud zone ring, and
+    that is where finding 42's 1,348-stud walk came from. Every distance in the
+    game was downstream of one number nobody had questioned.
+
+    Six plots, with the gap widened from 30 to 180 so the plaza stays big enough
+    for what docs/02 §1.1 puts in it:
+
+    | | Before | After |
+    |---|---:|---:|
+    | Plots | 24 | 6 |
+    | Park ring | 573 | 286 |
+    | Plaza | 520 | 226 |
+    | Zone ring | 950 | 700 |
+    | Longest walk to Zone 1 | 1,348 (67 s) | 811 (41 s) |
+    | Shortest walk | 202 (10 s) | 239 (12 s) |
+
+    Finding 42 is now closed from both ends: the claim order front-loads the
+    short walks, and the geometry cut the long one by 40 %.
+
+    **The specs adjudicated every number.** Four failed on the first attempt and
+    each was a real constraint rather than a stale literal: the Colosseum no
+    longer fitting a 226-stud plaza; a zone ring at 650 leaving the ten reserved
+    slots 402 studs apart when rotated 350-stud squares need 420; a `step6`
+    assertion restoring a plot count to the literal `24`; and `step23` asking
+    about the eighth and twelfth joiner on a six-plot server.
+
+    That last one exposed a claim that had been slightly false since Step 23: "the
+    first N joiners walk less than index order would send them" is not true for
+    every N. On a six-plot ring the first two tie. The honest claim — never
+    worse for any N, strictly better somewhere — is what the spec asserts now.
+
+54. **`MaxPlayers` and `PlotCount` are the same number in three places, and the
+    check that guarded them could not fire.** `GameConfig.MaxPlayers`,
+    `GameConfig.ParkPlotCount` and `ParkConfig.PlotCount` all had to say 24, and
+    now all have to say 6.
+
+    The existing guard compared the players present *right now* against the plot
+    count — so on an empty boot it never ran, and it could only report the
+    problem after somebody had already joined with nowhere to live. It now
+    asserts the configuration at boot, before anybody joins, and separately
+    warns if `Players.MaxPlayers` — the **place** setting, which is not in this
+    repository — exceeds the plot count, naming the fix.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

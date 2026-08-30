@@ -36,14 +36,28 @@ ZoneConfig.SlotCount = 10
 ZoneConfig.ZoneSize = 350
 
 --[[
-	Derived clearance, not a chosen number. Parks occupy 573 +/- 60, so their
-	outer edge is 633; a zone's inner edge is RingRadius - ZoneSize/2. At 950
-	that leaves a 142-stud walk between the park ring and the nearest zone,
+	Derived clearance, not a chosen number. Parks occupy 286 +/- 60, so their
+	outer edge is 346; a zone's inner edge is RingRadius - ZoneSize/2. At 700
+	that leaves a 179-stud walk between the park ring and the nearest zone,
 	which is the "zone entrances are close" feel from the FTUE.
-]]
-ZoneConfig.RingRadius = 950
 
-ZoneConfig.HubRadius = 520
+	Was 950, sized around a 24-plot ring. Six plots halved the park ring, so this
+	came in with it - and the longest walk any player can be given to Jurassic
+	Plains dropped from 1,348 studs to 811 (finding 42, half-fixed by the claim
+	order in Step 23 and finished here by the geometry).
+
+	It cannot come in further. The ten reserved ring slots hold 350-stud squares
+	that are ROTATED relative to each other, so the separation they need is not
+	the naive chord: `zoneHalf + zoneHalf x (cos(step) + sin(step))`, which is
+	420 studs at ten slots. A first attempt at 650 gave a chord of 402 and
+	step7_spec rejected it - the zones would have touched at the V1.4
+	build-out, in a way a screenshot of four zones would never have shown.
+]]
+ZoneConfig.RingRadius = 700
+
+--- The plaza reaches the park ring's inner edge (286 - 60), so a player can
+--- walk from any park to any zone without falling off the world.
+ZoneConfig.HubRadius = 226
 ZoneConfig.GroundThickness = 4
 ZoneConfig.GateHeight = 150 -- docs/02 §1.2: visible from across the map
 ZoneConfig.RoadWidth = 40

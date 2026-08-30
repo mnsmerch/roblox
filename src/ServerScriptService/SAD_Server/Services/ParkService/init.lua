@@ -644,8 +644,38 @@ function ParkService.Init(app)
 	Log.info("ParkService", "Built %d plots at radius %.0f in %.0f ms",
 		ParkConfig.PlotCount, radius, (os.clock() - startedAt) * 1000)
 
-	if #Players:GetPlayers() > ParkConfig.PlotCount then
-		Log.error("ParkService", "MaxPlayers exceeds PlotCount - some players will be kicked")
+	--[[
+		═══ ONE PLOT PER PLAYER, CHECKED THREE WAYS ════════════════════════════
+		A player with no plot has nowhere to live: no park, no incubators, no
+		income, and `claimPlot` hands them nil.
+
+		The old check compared the players present RIGHT NOW against the plot
+		count, so on an empty boot it never fired - it could only report the
+		problem after it had already happened to somebody. These check the
+		configuration instead, at boot, before anybody joins.
+
+		`Players.MaxPlayers` is the one that actually governs, and it is a PLACE
+		setting rather than anything in this repository - so it is a warning
+		naming the fix, not an assert. The two config copies are ours, so they
+		are asserts.
+		═══════════════════════════════════════════════════════════════════════
+	]]
+	assert(GameConfig.ParkPlotCount == ParkConfig.PlotCount,
+		("GameConfig.ParkPlotCount is %d and ParkConfig.PlotCount is %d - "
+			.. "they are the same number and must agree")
+			:format(GameConfig.ParkPlotCount, ParkConfig.PlotCount))
+
+	assert(GameConfig.MaxPlayers <= ParkConfig.PlotCount,
+		("GameConfig.MaxPlayers is %d but there are only %d plots - "
+			.. "a player without a plot has nowhere to live")
+			:format(GameConfig.MaxPlayers, ParkConfig.PlotCount))
+
+	if Players.MaxPlayers > ParkConfig.PlotCount then
+		Log.warn("ParkService",
+			"This place allows %d players but there are only %d plots. "
+				.. "Set MaxPlayers to %d in Game Settings, or players will join "
+				.. "with no park", Players.MaxPlayers, ParkConfig.PlotCount,
+			ParkConfig.PlotCount)
 	end
 end
 

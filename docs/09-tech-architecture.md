@@ -377,7 +377,7 @@ guardians.**
 
 | Concern | Approach |
 |---|---|
-| Dinosaur count | Up to 30 placed dinos × 24 parks = 720. Park dinos are **not** Humanoids — they are Models with an animated `AnimationController` and a simple 3-state wander driven by a **single shared 2 Hz loop** that batches all parks |
+| Dinosaur count | Up to 30 placed dinos × 6 parks = 180 (was 720 at 24 parks; the ring dropped to six after the first Studio session). Park dinos are **not** Humanoids — they are Models with an animated `AnimationController` and a simple 3-state wander driven by a **single shared 2 Hz loop** that batches all parks |
 | Distant parks | `StreamingEnabled` + per-park `Model.LevelOfDetail`; beyond 250 studs a park renders a single impostor billboard of its skyline |
 | Guardian AI | Dormant until aggro — an idle nest has no loop, no connection and no physics cost. **Decisions at 6 Hz, movement integrated every frame** from the last decision: steering six times a second looks like stop-motion, deciding sixty times a second costs sixty times as much for an answer that changes about as often as the player turns. Guardians are anchored and moved by CFrame rather than driven by Humanoids — the placeholder models have no rig, a Humanoid each would cost far more than the steering, and CFrame movement is unambiguously server-authoritative. Hard cap 20 active; at the cap a new steal **recycles the longest-running chase** |
 | Particles | Global `ParticleBudget`; rarity VFX auto-downgrade beyond 120 studs and are disabled entirely in Low Graphics Mode |

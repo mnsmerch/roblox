@@ -84,8 +84,9 @@ local BONE_MARKET_BOARDS = {
 }
 
 --- Distance from the plaza centre. Far enough not to crowd the monument, well
---- inside HubRadius so a board is never floating over the edge.
-local BONE_MARKET_RADIUS = 90
+--- inside HubRadius so a board is never floating over the edge. Came in from
+--- 90 with the plaza, to keep its 60-stud clearance from the statue plinths.
+local BONE_MARKET_RADIUS = 60
 
 local function buildBoneMarket(hub: Model)
 	local market = Instance.new("Model")
@@ -151,15 +152,19 @@ end
 	everyone's world.
 ]]
 --[[
-	Placement. The plaza reaches 520 and the park ring's inner edge is at ~513,
-	so everything here has to sit inside that; the Bone Market is at 90, so the
-	Colosseum has to sit outside THAT. 250 and 195 leave a clear walk between
+	Placement. The plaza reaches 226 and the park ring's inner edge is at 226,
+	so everything here has to sit inside that; the Bone Market is at 60, so the
+	Colosseum has to sit outside THAT. 160 and 130 leave a clear walk between
 	the two and a clear walk out to the parks.
+
+	Was 250 and 195, sized for the 520-radius plaza a 24-plot ring produced.
+	Six plots brought the plaza to 226 and the Colosseum came in with it -
+	caught by step22_spec, which asserts the clearance rather than trusting it.
 ]]
 local COLOSSEUM_ANGLE = 0 -- degrees offset; +180 below puts it opposite the market
-local COLOSSEUM_RADIUS = 250
+local COLOSSEUM_RADIUS = 160
 local COLOSSEUM_ARC = 70 -- degrees the pillars are spread across
-local STATUE_RADIUS = 195
+local STATUE_RADIUS = 130
 
 local function buildColosseum(hub: Model)
 	local colosseum = Instance.new("Model")

@@ -64,7 +64,7 @@ verify), **Watch for** (the bugs that actually happen).
 - **Watch for:** `ResetOnSpawn` must be false or the HUD dies on respawn.
 
 ### Step 6 — Park plots
-- **Build:** 24 plots, assignment on join, release on leave, gate trigger,
+- **Build:** 6 plots, assignment on join, release on leave, gate trigger,
   placement grid, spawn-in-your-own-park.
 - **Location:** `Workspace/SAD_World/ParkPlots`; `ParkService`.
 - **Objects:** `Plot01…Plot24` Models each containing `Gate`, `SafeDome`,

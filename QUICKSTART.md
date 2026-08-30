@@ -10,7 +10,7 @@ Three ways to test, in increasing order of setup cost.
 ./tests/run.sh
 ```
 
-Syntax-checks all 98 source files and runs **5,111 assertions**: the economy
+Syntax-checks all 98 source files and runs **5,076 assertions**: the economy
 maths, the migration chain, the replication round-trip, the touch-target
 guarantee across 12 device viewports, the park grid maths.
 
@@ -93,6 +93,11 @@ for testing saves.
 **c. Delete the default `SpawnLocation`** if your baseplate has one.
 `CharacterAutoLoads` is off; players are spawned into their own park.
 
+**d. Set `MaxPlayers` to 6** — Home → Game Settings → Basic Info. There are six
+park plots, one per player, and a seventh player would join with nowhere to
+live. `ParkService` asserts the two config copies of that number at boot and
+warns if the place setting disagrees.
+
 ---
 
 ## Smoke test: press Play
@@ -108,7 +113,7 @@ You should see, in order:
   ...
   8 passed, 0 warning(s), 0 error(s), 3 skipped
 [SAD/S][DataService] Store 'SAD_Profiles_v1' ready, schema v1
-[SAD/S][ParkService] Built 24 plots at radius 573 in N ms
+[SAD/S][ParkService] Built 6 plots at radius 286 in N ms
 [SAD/S][PlayerDataService] YourName is a NEW player
 [SAD/S][ParkService] Assigned YourName to Plot01
 [SAD/S] ======== Server boot complete (N ms) ========
