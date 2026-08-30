@@ -105,6 +105,7 @@ Names below are frozen. Nothing here gets renamed without a doc change first.
 | `Config/TutorialConfig` | ModuleScript | The 12 beats, the four bends, and the advance check — all pure |
 | `Config/AnalyticsConfig` | ModuleScript | docs/14's 46 events, the 3-field limit, sampling, and docs/12 §4's gates |
 | `Config/AnimationConfig` | ModuleScript | docs/15 §2's 29 clips, the procedural stand-ins, and 20 archetype characters |
+| `Config/BodyPlanConfig` | ModuleScript | 12 placeholder silhouettes, the archetype mapping, and the zone/rarity palette — all pure numbers |
 | `Modules/Types` | ModuleScript | Luau types incl. the full `Profile` shape |
 | `Modules/Log` | ModuleScript | `Log.debug/info/warn/error/banner(scope, msg, ...)` |
 | `Modules/Signal` | ModuleScript | `new/Connect/Once/Fire/Wait/DisconnectAll` |
@@ -886,6 +887,52 @@ when unsure what changed — it marks everything dirty, costing one wider diff
 rather than a desynced client). A write that bypasses both is a write the
 client never hears about; there is no polling fallback by design.
 
+### The placeholder pass
+
+```
+BodyPlanConfig.Plans / PlanIdFor(entry) -> planId
+BodyPlanConfig.Segments(entry) -> { descriptor }   -- mirrors expanded
+BodyPlanConfig.Palette(entry, zoneConfig, rarityConfig) -> { Body, Belly, Limb, Accent, Eye, Tooth }
+BodyPlanConfig.StandHeight(entry) -> footprints
+BodyPlanConfig.Jitter(id, salt) -> [-1, 1)
+BodyPlanConfig.Validate(chaseConfig, dinoConfig) -> ok, problems
+```
+
+**The old placeholder was one shape for all 35 species** — a box torso, a box
+head, a box tail, four box legs, tinted from a hash of the species id. It was
+built to prove the content pipeline resolved, and it did that for nineteen
+steps.
+
+**Twelve silhouettes now, defaulted from the chase archetype.** How a thing
+moves and how it looks are the same question, so `ChaseConfig`'s twenty
+archetypes pick the body plan: a `spiker` gets plates, a `swimmer` gets
+flippers, a `divebomber` gets wings. Eight species override it, because one
+archetype can cover several animals — `bulldozer` is Protoceratops, Ankylosaurus
+and Iguanodon, which smash through scenery identically and look nothing alike.
+
+**Colour is derived, never authored.** The hide is the species' home zone colour
+from `ZoneConfig`; the crest, frill, sail or plates carry the rarity colour from
+`RarityConfig`. Nothing new is hand-written, so nothing can drift out of step
+with the zone and rarity tables — and a Legendary now reads as Legendary from
+across the park, which the old free-running hash actively worked against.
+
+**Two shapes only: ellipsoids and blocks.** A `WedgePart`'s slope orientation
+and a `Cylinder` part's long axis are both things I would have been guessing at,
+and a guess there ships 35 models with their horns on backwards. An ellipsoid is
+a Block part wearing a `SpecialMesh` set to Sphere, which fills the part's
+bounding box — enough for snouts, tails, necks and flippers without inventing an
+API.
+
+**The decisions are in a config so the specs can reach them.** `AssetBuilder`
+builds `Instance`s, which cannot be tested offline — and the first two Studio
+runs of this project died in Instance code that five thousand offline assertions
+had passed straight over. So every number lives in `BodyPlanConfig` as plain
+Lua, and `AssetBuilder` is a loop with no judgement in it. `tests/bodyplan_spec`
+then asserts the things that actually go wrong in-world and never throw: a limb
+that does not reach the ground, a body wider than its tile, an archetype
+silently falling back to the generic theropod, two species in one zone that come
+out the same colour, an accent invisible against the hide it sits on.
+
 ### StarterPlayerScripts/SAD_Client/UI
 
 | Object | Type | Purpose |
@@ -1086,11 +1133,18 @@ current value, then on every change at or under that path. No polling anywhere.
 | 121 | Gait is derived from observed motion rather than sent | A guardian's position is already replicated, so a "now I'm running" packet would send what the client can already see — and a derived state cannot desync. Thresholds are fractions of `BaseWalkSpeed`, so they follow the game's speed | docs/09 §3 |
 | 122 | `WildAIService` stamps `Ability`, `WindupSecs` and `AbilityAt` as **attributes** | docs/03 §1.2's wind-up "tell" existed only as a speed change. Attributes replicate on their own, so the visual tell costs no remote and no entry in the frozen `Net` inventory, and a client that ignores them is exactly as correct | docs/03 §1.2 |
 | 123 | The player's character is registered but **not gait-driven** | Roblox's default `Animate` script already plays its walk and run. Deriving a second gait would be two animations fighting for the same joints the day a `Walk` asset lands — so the character gets docs/15's event clips and nothing else | docs/15 §2 |
+| 124 | Added `BodyPlanConfig` as config module #22, and `AssetBuilder` stopped deciding anything | Instance code cannot be tested outside Roblox — findings 49 and 53 are both bugs that lived in it while the suite passed over them. Splitting the decisions out means the silhouette and the palette are plain numbers a spec can measure, and the Roblox half is a loop with nothing in it to get wrong | docs/09 §1, docs/15 §1 |
+| 125 | **The model's `PrimaryPart` was the torso, so every dinosaur in the game was buried to its belly** | A Model's pivot IS its `PrimaryPart`'s CFrame. The torso sits ~0.45 footprints up, so `model:PivotTo(groundCFrame)` sank a 1×1 by four studs and a 2×2 guardian by eight. Nothing threw, and both callers were correct: `ParkService` places at the tile's floor CFrame (`GridCenterOffset.Y` is 0 and the plot slab tops out at Y = 0) and `WildAIService` at ground + 2. The model was lying about where its feet were. `PrimaryPart` is now an empty `Root` at the model origin | — |
+| 126 | The name tag height comes from a `StandHeight` attribute, not a constant | Consequence of #125: with the pivot at the feet, a fixed `StudsOffsetWorldSpace` of 8 puts the tag at a titan rex's ankle and above a Compsognathus's head. `AssetBuilder` publishes the height the body plan implies; `ParkService` falls back to `GetExtentsSize().Y` so real art dropped in without the attribute still works | — |
+| 127 | Colour jitter is three independent hash streams, not one | The old `hueFor` was a single weak hash (`hash * 31 % 360`) used as an **absolute** hue, which both ignored the zone and collided: `protoceratops` and `struthiomimus` came out 0.0018 apart — the same colour, same zone, same rarity. Hue, saturation and value now come from separate salted streams, and the spec measures the combined distance rather than trusting any one channel. Deliberately keyed on the species id, not `IndexOrder`, so inserting a species mid-roster does not repaint everything after it | — |
+| 128 | The dark-rarity swap is keyed on measured value, not a list of ids | Secret is `1A1A24` — value 0.14. As an accent on a mid-toned hide it is a smudge, which would make the two rarest-but-one species the least distinctive in the game. Below `DarkRaritySwap` the hide and accent trade jobs. Measured rather than listed, so a future dark rarity gets the same treatment without anyone remembering | docs/01 §3 |
+| 129 | Added ConfigValidator **rule 12**: every species resolves to a body plan that stands on the ground inside its tile | It calls the same `BodyPlanConfig.Validate` the offline spec calls, so the boot check and the spec cannot disagree about what valid means. It also warns when a plan is used by no species — the opposite failure, where a species has quietly lost its silhouette to the fallback | docs/11 §5 |
+| 130 | The same-zone colour-separation bar is set at the **measured** floor, not a derived one | 0.044 is where the current roster actually sits (othnielia vs psittacosaurus). A hash cannot guarantee any separation, so the honest thing is a tripwire at today's value with instructions not to widen the jitter when it trips — widening moves every species to hide one collision. Rename the id or add an override instead | — |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 98 source files and runs **5,109
-assertions** outside Roblox. Last run: **5,109 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 99 source files and runs **6,745
+assertions** outside Roblox. Last run: **6,745 passed, 0 failed.**
 
 **What these do and do not prove — now demonstrated, not claimed.** The first
 Studio run found four bugs (findings 49–52) that 5,097 assertions had passed

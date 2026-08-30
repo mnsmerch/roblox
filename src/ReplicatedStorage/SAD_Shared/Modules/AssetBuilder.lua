@@ -11,51 +11,84 @@
 	resolve) becomes a real check rather than a permanently skipped one, and
 	Steps 11 and 12 have something to hatch and place.
 
-	Placeholders are deliberately crude - a body, a head, four legs, sized from
-	the species footprint and tinted from a hash of its id. They are not trying
-	to look good. They are trying to be present, correctly named, correctly
-	scaled, and easy to delete.
+	The SHAPE and COLOUR of a placeholder are not decided here - they live in
+	`BodyPlanConfig` as plain numbers, so they can be tested offline. This file
+	is the thin part: it turns each descriptor into a Part, and nothing in it
+	makes a judgement about how a dinosaur should look.
+
+	That split is deliberate. Instance code cannot be tested outside Roblox, and
+	the first two Studio runs of this project died in Instance code that 5,000
+	offline assertions had passed straight over. So the rule is: decisions in a
+	config module the specs can reach, Instances in a loop with no decisions.
 
 	When real art arrives (Step 24): drop the models into SAD_Assets/Dinos and
 	SAD_Assets/Eggs with the same names and set BuildPlaceholders to false in
 	GameConfig. Nothing else changes - that is the point of deriving ModelName
 	from the species id.
 
-	Depends on: DinoConfig, RarityConfig, ParkConfig.
+	Depends on: BodyPlanConfig, DinoConfig, RarityConfig, ParkConfig, ZoneConfig.
 ]]
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage:WaitForChild("SAD_Shared")
+local BodyPlanConfig = require(Shared.Config.BodyPlanConfig)
 local DinoConfig = require(Shared.Config.DinoConfig)
 local ParkConfig = require(Shared.Config.ParkConfig)
 local RarityConfig = require(Shared.Config.RarityConfig)
+local ZoneConfig = require(Shared.Config.ZoneConfig)
 local Log = require(Shared.Modules.Log)
 
 local AssetBuilder = {}
 
---- Stable pseudo-colour from a species id, so a placeholder keeps the same
---- look between sessions and two species are rarely the same shade.
-local function hueFor(id: string): number
-	local hash = 0
-	for index = 1, #id do
-		hash = (hash * 31 + string.byte(id, index)) % 360
-	end
-	return hash / 360
-end
+--[[
+	One segment of a body plan, in world units.
 
-local function block(name: string, size: Vector3, offset: Vector3, color: Color3, parent: Instance): BasePart
+	`Ellipsoid` is a Block part wearing a `SpecialMesh` set to Sphere, which
+	fills the part's bounding box - so a 4 x 2 x 6 part becomes a 4 x 2 x 6
+	ellipsoid. That is the only way to get a non-uniform rounded shape out of a
+	primitive without an asset, and it is why BodyPlanConfig needs no wedges or
+	cylinders (whose orientation conventions I would be guessing at).
+]]
+local function buildSegment(descriptor, footprint: number, palette, parent: Instance): BasePart
 	local part = Instance.new("Part")
-	part.Name = name
-	part.Size = size
-	part.CFrame = CFrame.new(offset)
-	part.Color = color
+	part.Name = descriptor.Name
+	part.Size = Vector3.new(
+		descriptor.Size[1] * footprint,
+		descriptor.Size[2] * footprint,
+		descriptor.Size[3] * footprint)
+
+	local offset = CFrame.new(
+		descriptor.At[1] * footprint,
+		descriptor.At[2] * footprint,
+		descriptor.At[3] * footprint)
+	if descriptor.Rot then
+		offset *= CFrame.Angles(
+			math.rad(descriptor.Rot[1]),
+			math.rad(descriptor.Rot[2]),
+			math.rad(descriptor.Rot[3]))
+	end
+	part.CFrame = offset
+
+	local hsv = palette[descriptor.Tint]
+	assert(hsv, "AssetBuilder: body plan asked for tint '" .. tostring(descriptor.Tint) .. "'")
+	part.Color = Color3.fromHSV(hsv[1], hsv[2], hsv[3])
+
 	part.Anchored = true
 	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
 	part.CastShadow = false
 	part.Material = Enum.Material.SmoothPlastic
 	part.TopSurface = Enum.SurfaceType.Smooth
 	part.BottomSurface = Enum.SurfaceType.Smooth
+
+	if descriptor.Shape == "Ellipsoid" then
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = part
+	end
+
 	part.Parent = parent
 	return part
 end
@@ -64,47 +97,74 @@ end
 	A placeholder dinosaur, built at its real footprint so placement, collision
 	and the enclosure grid can all be tested with correct proportions.
 
-	Footprint drives width and depth; VisualScale multiplies everything, which
-	is what makes a Titan read as a Titan (3x) without a separate model.
+	Footprint drives everything; VisualScale multiplies it, which is what makes
+	a Titan read as a Titan (3x) without a separate model. Every number in the
+	plan is a fraction of that footprint, so one plan serves a 1x1 Compsognathus
+	and a 4x4 Tyrannosaurus unchanged.
 ]]
 function AssetBuilder.BuildDino(entry): Model
 	local span = tonumber(string.sub(entry.Size, 1, 1)) or 1
 	local footprint = span * ParkConfig.TileSize * entry.VisualScale
 
-	-- Leave a margin so a 4x4 does not touch its neighbours' tiles.
-	local width = footprint * 0.7
-	local height = footprint * 0.55
-	local legHeight = footprint * 0.28
-
-	local hue = hueFor(entry.Id)
-	local body = Color3.fromHSV(hue, 0.55, 0.75)
-	local accent = Color3.fromHSV((hue + 0.08) % 1, 0.6, 0.55)
+	local palette = BodyPlanConfig.Palette(entry, ZoneConfig, RarityConfig)
+	local segments = BodyPlanConfig.Segments(entry)
 
 	local model = Instance.new("Model")
 	model.Name = entry.ModelName
 
-	local torso = block("Torso",
-		Vector3.new(width * 0.6, height * 0.5, width),
-		Vector3.new(0, legHeight + height * 0.25, 0), body, model)
+	--[[
+		═══ WHY THERE IS A ROOT PART ═══════════════════════════════════════════
+		A Model's pivot IS its PrimaryPart's CFrame. The previous placeholder
+		made the TORSO the PrimaryPart, and the torso sits roughly 0.45
+		footprints off the ground - so every `model:PivotTo(groundCFrame)` in
+		the game buried the dinosaur up to its belly. On a 1x1 that is four
+		studs of a nine-stud model underground; on a 2x2 guardian, eight.
 
-	block("Head",
-		Vector3.new(width * 0.4, height * 0.35, width * 0.45),
-		Vector3.new(0, legHeight + height * 0.55, width * 0.6), accent, model)
+		Both callers were right and the model was wrong: ParkService places at
+		the tile's floor CFrame (`GridCenterOffset` has Y = 0, and the plot's
+		base slab tops out at Y = 0), and WildAIService places at ground + 2.
 
-	block("Tail",
-		Vector3.new(width * 0.25, height * 0.2, width * 0.7),
-		Vector3.new(0, legHeight + height * 0.3, -width * 0.7), accent, model)
+		So the pivot is now an empty part at the model's own origin, which is
+		where the feet are. Nothing outside this file changed to make placement
+		correct - the model started reporting where its feet were.
+		═══════════════════════════════════════════════════════════════════════
+	]]
+	local root = Instance.new("Part")
+	root.Name = "Root"
+	root.Size = Vector3.new(0.2, 0.2, 0.2)
+	root.CFrame = CFrame.new()
+	root.Transparency = 1
+	root.Anchored = true
+	root.CanCollide = false
+	root.CanQuery = false
+	root.CanTouch = false
+	root.CastShadow = false
+	root.Parent = model
+	model.PrimaryPart = root
 
-	for _, side in { -1, 1 } do
-		for _, front in { -1, 1 } do
-			block("Leg",
-				Vector3.new(width * 0.16, legHeight, width * 0.16),
-				Vector3.new(side * width * 0.2, legHeight * 0.5, front * width * 0.28), accent, model)
+	local torso: BasePart? = nil
+	for _, descriptor in segments do
+		local part = buildSegment(descriptor, footprint, palette, model)
+		if descriptor.Name == "Torso" then
+			torso = part
 		end
 	end
 
-	model.PrimaryPart = torso
+	--[[
+		Not a soft failure. The rarity light is parented to the Torso so it
+		glows from inside the body rather than from the ankles; a plan without
+		one would lose it silently. BodyPlanConfig.Validate() asserts every plan
+		has a Torso, so reaching here means the two files have drifted apart.
+	]]
+	assert(torso, "AssetBuilder: body plan for '" .. entry.Id .. "' produced no Torso")
+
 	model:SetAttribute("SpeciesId", entry.Id)
+	model:SetAttribute("BodyPlan", BodyPlanConfig.PlanIdFor(entry))
+	--[[
+		In studs, so a caller placing a name tag above the head does not have to
+		know anything about footprints. Read by ParkService.
+	]]
+	model:SetAttribute("StandHeight", BodyPlanConfig.StandHeight(entry) * footprint)
 	model:SetAttribute("Placeholder", true)
 	return model
 end

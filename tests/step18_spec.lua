@@ -27,7 +27,7 @@ Random = { new = function(seed) return setmetatable({ s = seed or 1 }, RandomMT)
 Color3 = { fromHex = function(h) return { Hex = h } end, fromRGB = function(r, g, b) return { r, g, b } end }
 typeof = type
 
---@INJECT TableUtil=src/ReplicatedStorage/SAD_Shared/Modules/TableUtil.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua EventConfig=src/ReplicatedStorage/SAD_Shared/Config/EventConfig.lua WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua ConfigValidator=src/ReplicatedStorage/SAD_Shared/Config/ConfigValidator.lua@
+--@INJECT TableUtil=src/ReplicatedStorage/SAD_Shared/Modules/TableUtil.lua RNG=src/ReplicatedStorage/SAD_Shared/Modules/RNG.lua Format=src/ReplicatedStorage/SAD_Shared/Modules/Format.lua EventConfig=src/ReplicatedStorage/SAD_Shared/Config/EventConfig.lua WeatherConfig=src/ReplicatedStorage/SAD_Shared/Config/WeatherConfig.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua BodyPlanConfig=src/ReplicatedStorage/SAD_Shared/Config/BodyPlanConfig.lua ChaseConfig=src/ReplicatedStorage/SAD_Shared/Config/ChaseConfig.lua ConfigValidator=src/ReplicatedStorage/SAD_Shared/Config/ConfigValidator.lua@
 
 local passed, failed = 0, 0
 local function eq(label, got, want)
@@ -275,6 +275,7 @@ local report = ConfigValidator.Run({
 	Zone = ZoneConfig, Upgrade = UpgradeConfig, Weather = WeatherConfig,
 	Event = EventConfig,
 	EventHandlers = { MeteorImpact = true, Stampede = true, NestFrenzy = true, AmberRain = true },
+	BodyPlan = BodyPlanConfig, Chase = ChaseConfig,
 })
 
 eq("the full config set validates cleanly", #report.errors, 0)

@@ -14,7 +14,7 @@
 	Run with:  ./tests/run.sh
 ]]
 
---@INJECT TableUtil=src/ReplicatedStorage/SAD_Shared/Modules/TableUtil.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua ConfigValidator=src/ReplicatedStorage/SAD_Shared/Config/ConfigValidator.lua@
+--@INJECT TableUtil=src/ReplicatedStorage/SAD_Shared/Modules/TableUtil.lua RarityConfig=src/ReplicatedStorage/SAD_Shared/Config/RarityConfig.lua MutationConfig=src/ReplicatedStorage/SAD_Shared/Config/MutationConfig.lua DinoConfig=src/ReplicatedStorage/SAD_Shared/Config/DinoConfig.lua ZoneConfig=src/ReplicatedStorage/SAD_Shared/Config/ZoneConfig.lua UpgradeConfig=src/ReplicatedStorage/SAD_Shared/Config/UpgradeConfig.lua RebirthConfig=src/ReplicatedStorage/SAD_Shared/Config/RebirthConfig.lua BodyPlanConfig=src/ReplicatedStorage/SAD_Shared/Config/BodyPlanConfig.lua ChaseConfig=src/ReplicatedStorage/SAD_Shared/Config/ChaseConfig.lua ConfigValidator=src/ReplicatedStorage/SAD_Shared/Config/ConfigValidator.lua@
 
 local passed, failed = 0, 0
 local function eq(label, got, want)
@@ -33,6 +33,9 @@ local function section(name) print("\n== " .. name) end
 local REAL = {
 	Rarity = RarityConfig, Mutation = MutationConfig, Dino = DinoConfig,
 	Zone = ZoneConfig, Upgrade = UpgradeConfig,
+	-- Rule 12's inputs. The hand-built fixtures below deliberately omit them
+	-- and let R12 skip; this table is the one that mirrors RunDefault.
+	BodyPlan = BodyPlanConfig, Chase = ChaseConfig,
 }
 
 ------------------------------------------------------------------ rarity

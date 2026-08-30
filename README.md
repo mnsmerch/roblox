@@ -2,9 +2,12 @@
 
 A Roblox collection / stealing / passive-income game.
 
-> **Status: all 24 build steps complete. First Studio run done — server boots
-> clean, client fixed.** That run found four bugs 5,109 offline assertions had
-> passed over, three of them unreachable without Roblox. See
+> **Status: all 24 build steps complete. Three Studio runs done — the game
+> boots clean and loads end to end.** The first run found four bugs that 5,109
+> offline assertions had passed over, three of them unreachable without Roblox;
+> the placeholder pass since then found a fourth of that kind — every dinosaur
+> in the game was buried to its belly, because a Model's pivot is its
+> PrimaryPart and the PrimaryPart was the torso. See
 > [PROGRESS.md](PROGRESS.md) for what exists and what is still owed,
 > [QUICKSTART.md](QUICKSTART.md) to run it, and [SETUP.md](SETUP.md) for the
 > per-step Studio placement, test lists and the launch checklist.
@@ -21,7 +24,7 @@ dinosaur chases you home. Then other players try to steal your dinosaurs.
 offline test to a full Studio setup.
 
 ```bash
-./tests/run.sh    # 5,109 assertions, no Studio needed
+./tests/run.sh    # 6,745 assertions, no Studio needed
 ```
 
 ## Repository layout

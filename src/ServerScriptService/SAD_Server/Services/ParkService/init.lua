@@ -294,13 +294,30 @@ function ParkService.RefreshDinos(player: Player)
 			light.Color = RarityConfig.GetColor(entry.Rarity)
 			light.Brightness = 3
 			light.Range = 30
-			light.Parent = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+			--[[
+				The Torso, not the PrimaryPart. The PrimaryPart is now an empty
+				Root at the model's feet (it has to be, so PivotTo lands the
+				dinosaur on the ground rather than in it) - and a light at the
+				ankles of a 100-stud titan lights the ankles.
+			]]
+			light.Parent = model:FindFirstChild("Torso")
+				or model.PrimaryPart
+				or model:FindFirstChildWhichIsA("BasePart")
 		end
 
 		local nameTag = Instance.new("BillboardGui")
 		nameTag.Name = "NameTag"
 		nameTag.Size = UDim2.fromScale(12, 2.4)
-		nameTag.StudsOffsetWorldSpace = Vector3.new(0, 8, 0)
+		--[[
+			Above the head, not at a fixed 8 studs. The adornee is the Root part
+			at the model's feet, and species range from a 9-stud Compsognathus
+			to a titan rex three times its own 40-stud footprint - one constant
+			cannot serve both. `StandHeight` is set by AssetBuilder from the
+			body plan; the fallback covers real art dropped in without it.
+		]]
+		local standHeight = model:GetAttribute("StandHeight")
+			or model:GetExtentsSize().Y
+		nameTag.StudsOffsetWorldSpace = Vector3.new(0, standHeight + 3, 0)
 		nameTag.MaxDistance = 160
 		nameTag.Adornee = model.PrimaryPart
 

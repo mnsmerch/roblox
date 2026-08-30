@@ -760,6 +760,24 @@ one stealing from the other, is the way to check it.
 
 `AnimationController` is a **ModuleScript** under `Controllers`, already in the
 roster as a Step 9 reservation, so the Bootstrap does not change. Re-paste
+### Placeholder dinosaur models
+
+`SAD_Shared/Config/BodyPlanConfig` (new, ModuleScript) sits beside the other
+config modules. `AssetBuilder` requires it at boot — nothing else needs placing,
+and no Studio setting changes.
+
+To check it worked: press Play, then in Explorer open
+`ReplicatedStorage → SAD_Shared → SAD_Assets → Dinos`. Each model has a `Root`
+part at its feet (the PrimaryPart, invisible) plus 20–36 body parts, and a
+`BodyPlan` attribute naming its silhouette. Drag one into Workspace to look at
+it; it will sit on whatever surface you drop it on rather than sinking into it.
+
+To replace one with real art: drop a Model with the same name into that folder
+before the game boots. `AssetBuilder` only builds what is missing, so it is one
+species at a time. Real models want their own `Root` at the feet as PrimaryPart,
+and a `StandHeight` attribute in studs if the name tag should sit above the
+head.
+
 `SAD_Shared/Config/AnimationConfig` (new) and
 `Services/WildAIService` (it now stamps three attributes on the guardian model).
 

@@ -50,6 +50,7 @@ local OPTIONAL_CONFIGS = {
 	]]
 	Weather = "WeatherConfig (Step 17)",
 	Assets = "SAD_Assets (Step 7)",
+	BodyPlan = "BodyPlanConfig + ChaseConfig",
 }
 
 local function newReport()
@@ -505,6 +506,68 @@ local function ruleWeatherTables(report, c)
 end
 
 --[[
+	R12: every species resolves to a body plan, and every plan stands on the
+	ground inside its tile.
+
+	`BodyPlanConfig.Validate` does the measuring - it is the same function
+	tests/bodyplan_spec.lua calls, so the boot check and the offline check
+	cannot disagree about what "valid" means. This rule exists so a placeholder
+	that hovers, clips its neighbour, or silently falls back to the generic
+	theropod fails the boot rather than being noticed in a Play session.
+]]
+local function ruleBodyPlans(report, c)
+	--[[
+		Skips rather than fails when either is absent, the same as rules 7, 8,
+		10 and 11 - a caller assembling `configs` by hand to exercise one rule
+		should not have to supply every other rule's inputs.
+
+		The protection against this becoming another registered-but-inert rule
+		is not here: it is that `RunDefault` supplies both unconditionally, and
+		that `Run` fails any rule reporting neither a pass, a skip nor an error.
+		A skip shows up in the boot log as a line, not as silence.
+	]]
+	if not c.BodyPlan or not c.Chase then
+		table.insert(report.skipped, OPTIONAL_CONFIGS.BodyPlan)
+		return
+	end
+
+	local ok, problems = c.BodyPlan.Validate(c.Chase, c.Dino)
+	if not ok then
+		for _, problem in problems do
+			fail(report, "R12", "%s", problem)
+		end
+		return
+	end
+
+	local plans = 0
+	for _ in c.BodyPlan.Plans do
+		plans += 1
+	end
+
+	--[[
+		Counting the species per plan is what catches the opposite failure: not
+		a broken plan, but a plan nothing points at any more, which means a
+		species quietly lost its silhouette to the fallback.
+	]]
+	local used = {}
+	local species = 0
+	for _, entry in c.Dino.Species do
+		species += 1
+		used[c.BodyPlan.PlanIdFor(entry)] = true
+	end
+	local usedCount = 0
+	for _ in used do
+		usedCount += 1
+	end
+
+	if usedCount < plans then
+		warn(report, "R12", "%d of %d body plan(s) are used by no species", plans - usedCount, plans)
+	end
+
+	pass(report, "R12", "%d species across %d body plan(s)", species, plans)
+end
+
+--[[
 	The rule list.
 
 	`RULES` is asserted contiguous and all-functions immediately below. That is
@@ -528,16 +591,17 @@ local RULES = {
 	ruleUpgradeEffects,
 	ruleProductIds,
 	ruleWeatherTables,
+	ruleBodyPlans,
 	ruleStructural,
 }
 
 --- Asserted at load, so a mis-registered rule cannot reach a running game.
-for index = 1, 12 do
+for index = 1, 13 do
 	assert(type(RULES[index]) == "function",
 		string.format("[SAD] ConfigValidator: rule #%d is %s, not a function - it is "
 			.. "registered in RULES but never defined", index, typeof(RULES[index])))
 end
-assert(RULES[13] == nil, "[SAD] ConfigValidator: RULES has more entries than the count asserted above")
+assert(RULES[14] == nil, "[SAD] ConfigValidator: RULES has more entries than the count asserted above")
 
 --[[
 	`configs` needs at minimum: Rarity, Mutation, Dino, Zone, Upgrade.
@@ -666,6 +730,13 @@ function ConfigValidator.RunDefault()
 			validator should pass rather than refuse.
 		]]
 		Product = optional("ProductConfig"),
+		--[[
+			Rule 12's two inputs. Both are required rather than optional: a
+			build with no body plans is a build where all 35 species look
+			identical, which is not something to pass quietly.
+		]]
+		BodyPlan = require(parent.BodyPlanConfig),
+		Chase = require(parent.ChaseConfig),
 	})
 end
 
