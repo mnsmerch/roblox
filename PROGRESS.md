@@ -3,7 +3,7 @@
 Running record of everything that exists, so nothing gets renamed or rebuilt by
 accident. Updated at the end of every build step.
 
-## Status: **Step 13 of 24 complete.** The Fossil sink opens. Awaiting the Studio Play test before Step 14.
+## Status: **Step 14 of 24 complete.** The map closes up. Awaiting the Studio Play test before Step 15.
 
 ## Completed
 
@@ -24,6 +24,7 @@ accident. Updated at the end of every build step.
 | 2026-08-30 | **Step 11** — incubation & hatching | Species + mutation rolls, incubator pads, 298 more assertions |
 | 2026-08-30 | **Step 12** — placement & income | Lazy bank, offline earnings, auto-placement, 57 more assertions |
 | 2026-08-30 | **Step 13** — upgrades & the shop | 14 tracks, shared `Stats`, three boards, 106 more assertions |
+| 2026-08-30 | **Step 14** — zones & teleports | Unlock gates, shrines, the Obelisk, 82 more assertions |
 
 ## Build steps (see docs/13-build-order.md)
 
@@ -42,7 +43,7 @@ accident. Updated at the end of every build step.
 | 11 | Incubation & hatching | ✅ **done** |
 | 12 | Placement & income | ✅ **done** |
 | 13 | Upgrades & shop | ✅ **done** |
-| 14 | Zones & teleports | ⬜ |
+| 14 | Zones & teleports | ✅ **done** |
 | 15 | Player raiding | ⬜ |
 | 16 | Notifications & announcements | ⬜ |
 | 17 | Weather | ⬜ |
@@ -109,6 +110,7 @@ rebuilds this on every server start.
 | `Services/NestService` | ModuleScript | World blockout, nest state, egg claiming, respawn |
 | `Services/NestService/WorldBuilder` | ModuleScript | Hub plaza + 4 zone blockouts + tagged anchors |
 | `Services/NestService/NestBuilder` | ModuleScript | Nest bowl, generic eggs, risk/odds sign |
+| `Services/NestService/ZoneService` | ModuleScript | Zone unlocking, shrines, teleports, locked-zone trespass |
 | `Services/SecurityService` | ModuleScript | Rate-limit records, movement plausibility, distance checks |
 | `Services/EggService` | ModuleScript | Pickup, rarity roll, carry tokens, carry weight, loose eggs, speed modifiers |
 | `Services/WildAIService` | ModuleScript | Guardian spawn, chase decisions, abilities, catching, de-aggro |
@@ -210,6 +212,31 @@ ones that also had a rebirth grant or a cap folded it in locally. `Stats` owns
 all of it; the old public functions (`EggService.LuckFrom`,
 `MutationService.MutLuckFrom`, `DinosaurService.GetStorageCap`,
 `Economy.SlotCap`, `Economy.BankSeconds`) kept their names and delegate.
+
+```
+ZoneConfig.UnlockCheck(zoneId, data, dinoConfig, rarityConfig)
+    -> ok, reason?, requirements     -- requirements = { {Label, Met}, ... }
+
+ZoneService.CanUnlock(data, zoneId) -> ok, reason?, requirements
+ZoneService.Unlock(player, zoneId) -> ok, reason?
+ZoneService.RegisterShrine(player, zoneId) -> ok, reason?
+ZoneService.Teleport(player, destination) -> ok, reason?
+ZoneService.DestinationCFrame(player, destination) -> CFrame?
+ZoneService.TeleportBlocked(player) -> reason?
+ZoneService.RegisterBlocker(name, fn)      -- fn(player) -> reason?
+ZoneService.ZoneAt(position) -> zoneId?
+ZoneService.ZoneUnlocked / ShrineFound / Teleported   Signals
+
+NestService.Zones                          -- the ZoneService above
+```
+
+**Unlocked and discovered are different fields.** `ZonesUnlocked` is what you
+paid for; `Shrines` is what you have walked to. A zone is only a teleport
+destination once both are true, so the first trip to any zone is always walked.
+
+**Teleports are refused mid-chase**, and that is the whole design of them —
+see deviation #43. `RegisterBlocker` is how Step 15 adds the raiding case in
+one line at its own call site.
 
 ```
 WildAIService.StartChase(player, nest, token) / EndChase(player, reason)
@@ -326,6 +353,7 @@ client never hears about; there is no polling fallback by design.
 | `CameraController` | ModuleScript | Camera shake, applied as an offset after Roblox's camera step |
 | `ParkController` | ModuleScript | Income floaters, computed locally from the replicated profile |
 | `ShopController` | ModuleScript | The three upgrade boards; prices rendered, never sent |
+| `TeleportController` | ModuleScript | The zone wheel, the PARK teleport, gate-barrier visibility |
 
 ```
 UIController.Layer(name) -> Frame        -- hud|screen|prompt|notification|takeover
@@ -410,11 +438,16 @@ current value, then on every change at or under that path. No polling anywhere.
 | 39 | Rebirth costs rounded to 3 significant figures, like every other price | `250000 × 5.2^n` gives `6760000.000000001` at rebirth 3 and `182790400` at rebirth 5. A price is a thing a player reads and a thing a comparison is made against: unrounded, it renders with a tail of digits and a player holding exactly 6,760,000 cannot afford a 6,760,000 rebirth. Rebirth 5 moves 182,790,400 → 183,000,000 | docs/05 §6 |
 | 40 | Added `GameConfig.LuckPerNode` (0.005) | It was an unnamed `0.005` inline in `EggService`. `Stats` folds it and the shop previews it, so it needed a name in the one place both can see | docs/10 §1 |
 | 41 | The Bone Market and the gate defence board are built in world geometry | docs/02 §1.1 deferred the Bone Market to "the systems that need it"; this is that system. Both carry a `ShopBoard` attribute the client reads straight off the prompt — opening a menu is not a server concern, so there is no remote for it, and the purchase remotes validate the board independently anyway | docs/02 §1.1, docs/06 §5 |
+| 42 | Added `Profile.Shrines` (schema field, no migration) | docs/02 §2.2 makes the shrine — not the purchase — what puts a zone on the Obelisk, so the two states are genuinely different and one table cannot hold both. Replicated, because the zone wheel has to draw the difference between *locked*, *paid for but never visited*, and *ready* | docs/10 §1 |
+| 43 | **A teleport is refused while a guardian is chasing you** | docs/08 §2.2 says PARK "teleports you home" and docs/00 §3 makes teleports load-bearing for tempo — but a teleport that works mid-chase deletes the chase: steal, tap, bank, with the only risk in the game skipped by a button. Refusing it keeps exactly the split deviation #30 already drew: the chase resolves by escape, and the unopposed walk home afterwards is tax. Teleports remove the tax. Carrying an egg is *not* itself a reason to refuse — once you have escaped, you have earned the trip | docs/02 §2.2, docs/03 §1.4 |
+| 44 | The locked-gate barrier is **cosmetic**; a positional check is the real gate | A part cannot be solid for one player and passable for another, so a barrier that actually blocked would block everyone forever. The client hides the ones it has unlocked (a client-side Transparency does not replicate) and `ZoneService` walks a trespasser back out at 2 Hz. Both halves ship together, and the server half is the one that is authoritative | docs/02 §2.1 |
+| 45 | `ZoneService` is a submodule of `NestService`, not a service in the roster | docs/13 §Step 14 says "a small `ZoneService` inside `NestService`". It owns no loop of its own beyond the trespass sweep and works entirely on the world `NestService` built moments earlier, so `NestService` forwards `Init` and `Start` to it. Keeps the roster at the 24 docs/09 §2 publishes | docs/09 §1 |
+| 46 | docs/00's loop timing corrected: **21 s typical / 33 s furthest**, not 23 s | Step 10 projected 23 s before the destinations existed. Measured against the real ones, the projection had priced a typical nest rather than the walk to the far side of a 350-stud zone. Still inside the 45-second target at every nest in the game, and less than half the 86 s on foot | docs/00 §3 |
 
 ## Verification
 
-`./tests/run.sh` — syntax-checks all 53 source files and runs **2,686
-assertions** outside Roblox. Last run: **2,686 passed, 0 failed.**
+`./tests/run.sh` — syntax-checks all 55 source files and runs **2,768
+assertions** outside Roblox. Last run: **2,768 passed, 0 failed.**
 
 | Spec | Covers |
 |---|---|
@@ -430,6 +463,7 @@ assertions** outside Roblox. Last run: **2,686 passed, 0 failed.**
 | `step10_spec` (31) | Storage bounds, deposited-egg shape against the schema, travel distances, how often being chased home is reachable, and measured loop tempo |
 | `step11_spec` (298) | Mutation distributions against published weights, Prime pairing and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, the incubation ladder |
 | `step12_spec` (57) | Footprint occupancy under a fully packed grid, the banking formula against its own cap, offline earnings at every rebirth level, slot caps, and the day-one income curve measured against docs/05 §8 |
+| `step14_spec` (76) | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside the zone they travel to, zone-square clearance against the park ring, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim against the published income curve |
 | `step13_spec` (100) | Every price in the game against integrality, monotonicity and determinism; all 14 published max effects; `Stats.Of` against every single-field helper on three profiles; the Upgrades/Defences split asserted in both directions; Buy Max bounds and the never-negative rule; the retroactive-income guard; and docs/05 §5's 180-second constraint measured across a rebirth run |
 
 Bugs the specs caught before they shipped:
@@ -583,6 +617,43 @@ Bugs the specs caught before they shipped:
     have been told they could not afford a 6,760,000 rebirth. Now rounded the
     same way, and asserted as exact whole numbers rather than "near" — which
     is what caught it, since step3_spec had pinned the raw float.
+
+18. **Teleporting would have deleted the chase.** docs/08 §2.2 gives the PARK
+    button one job — "teleports you home" — and docs/00 §3 makes teleports
+    load-bearing for the loop's tempo. Neither document says what happens if
+    you press it *while a guardian is chasing you*, and the obvious
+    implementation lets you: steal an egg, tap PARK, bank it. That is the
+    entire risk of the core loop removed by a button, and it would not have
+    thrown, failed a test, or looked wrong in a screenshot.
+
+    Resolved by refusing a teleport while a chase is active — which turns out
+    to be exactly the line deviation #30 already drew in Step 9: the chase
+    resolves by *escape*, and the walk home afterwards is unopposed. Teleports
+    remove the unopposed walk, which is tax, and leave the escape, which is
+    the game. Carrying an egg is deliberately *not* itself a reason to refuse.
+
+    Step 15's raid case is the same shape, so the check is a registry
+    (`ZoneService.RegisterBlocker`) rather than a hardcoded condition.
+
+19. **The loop is 33 seconds, not the 23 I projected.** Step 10 recorded that
+    zone teleports and the PARK button would bring the walking loop from 86 s
+    to 23 s. Measured against destinations that now exist rather than against
+    a plan, it is **21 s to a typical nest and 33 s to the furthest one** —
+    because the projection had priced a typical nest rather than the walk to
+    the far side of a 350-stud zone. Still inside docs/00's 45-second target
+    at every nest in the game, and less than half the on-foot figure, so the
+    conclusion stands and the number was wrong. docs/00 now carries both
+    figures and says which is which.
+
+20. **Zone squares clear the park ring by 70 studs.** Step 7 asserted zones do
+    not overlap *each other*; nothing had checked zones against parks, because
+    they were built by different modules in different steps. It matters from
+    this step on: `ZoneService` shoves anyone standing inside a locked zone
+    back out, so a zone square reaching the park ring would teleport a player
+    out of their own park, repeatedly, with a toast telling them their park is
+    locked. Measured: park outer edge 633, nearest zone corner 703. Asserted
+    both analytically and by sampling all 24 plot centres, so a change to
+    either ring's radius fails here rather than in someone's park.
 
 **Known gap, stated rather than faked:** docs/02 wants zone difficulty to come
 partly from localised hazards — mud pools at −35 %, ice momentum. Those need

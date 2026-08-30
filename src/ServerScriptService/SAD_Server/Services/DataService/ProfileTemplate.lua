@@ -41,6 +41,13 @@ local ProfileTemplate = {
 	-- ── Progression ─────────────────────────────────────────────────────────
 	Rebirths = 0,
 	ZonesUnlocked = { plains = true }, -- Zone 1 is free; see docs/02 §2.1
+	--[[
+		[zoneId] = true for every Zone Shrine touched. Deliberately separate
+		from ZonesUnlocked: buying a zone gets you in, WALKING to its shrine is
+		what puts it on the Teleport Obelisk (docs/02 §2.2). That is the beat
+		that teaches the map before it lets you skip it.
+	]]
+	Shrines = {},
 	Upgrades = {}, -- [trackId] = level; absent means 0
 	Defences = {}, -- [defenceId] = level
 	LuckNodes = 0,

@@ -144,6 +144,7 @@ export type Profile = {
 
 	Rebirths: number,
 	ZonesUnlocked: Dict<boolean>,
+	Shrines: Dict<boolean>,
 	Upgrades: Dict<number>,
 	Defences: Dict<number>,
 	LuckNodes: number,

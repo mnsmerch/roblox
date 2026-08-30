@@ -82,10 +82,13 @@ is scary; a 7-year-old should laugh when the T-Rex catches them.
 **Loop timings (the rhythm the game should feel like):**
 
 - Micro-loop (**~45 s**): travel → steal → chase → deposit.
-  *Measured: 86 s on foot, 23 s once zone teleports and the PARK button exist
-  (Step 14). The map is deliberately too large to walk repeatedly — teleports
-  are what make the loop tempo work, and they are earned by discovering a zone
-  once. See `tests/step10_spec.lua`.*
+  *Measured: **86 s on foot**. With the Step 14 teleports built: **21 s to a
+  typical nest, 33 s to the furthest one in the game** — inside the target at
+  every nest. (Step 10 projected 23 s; that projection priced a typical nest
+  rather than the walk to the far side of a 350-stud zone.) The map is
+  deliberately too large to walk repeatedly — teleports are what make the loop
+  tempo work, and they are earned by discovering a zone once. See
+  `tests/step10_spec.lua` and `tests/step14_spec.lua`.*
 - Small loop (**~4 min**): a full egg from nest to placed dinosaur.
 - Medium loop (**~20 min**): enough Fossils for a meaningful upgrade or zone.
 - Macro loop (**~3–6 h**): a rebirth.

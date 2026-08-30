@@ -115,7 +115,24 @@ Each zone contains:
   are the skill expression of the chase: knowing them turns a 25-second panic
   into a 12-second flex.
 - **1 Zone Shrine.** Interact once to permanently register the zone on your
-  Teleport Obelisk and grant a small one-time Fossil bonus.
+  Teleport Obelisk and grant a small one-time Fossil bonus (500 F).
+
+> **Unlocked and discovered are different things.** Paying a zone's gate lets
+> you walk in; touching its shrine is what puts it on the Obelisk. So the first
+> trip to any zone is always walked, which is what teaches the map before the
+> game lets you skip it. The profile tracks the two separately
+> (`ZonesUnlocked` and `Shrines`).
+>
+> **A teleport is refused while a guardian is chasing you.** Otherwise the PARK
+> button deletes the chase — steal, tap, bank, with the only risk in the game
+> skipped. Teleports remove the *unopposed* walk home after an escape, which is
+> tax; they do not remove the escape, which is the game. This follows the same
+> line docs/03 §1.4 draws.
+>
+> **The gate barrier is scenery.** A part cannot be solid for one player and
+> passable for another, so the force-field across a locked gate is cosmetic
+> (each client hides the ones it has unlocked) and the server walks a
+> trespasser back out from a positional check. Both halves ship together.
 
 ### 2.3 Nests
 

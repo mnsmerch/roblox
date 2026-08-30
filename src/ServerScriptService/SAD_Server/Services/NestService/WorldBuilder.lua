@@ -162,6 +162,31 @@ function WorldBuilder.BuildHub(parent: Instance): Model
 
 	buildBoneMarket(hub)
 
+	--[[
+		The Teleport Obelisk, "beside spawn" per docs/02 §1.1. Opens the same
+		zone wheel the GO button does; the destination list is replicated and
+		every choice is re-validated server-side, so the prompt is pure UI.
+	]]
+	local obelisk = part({
+		Name = "TeleportObelisk",
+		Size = Vector3.new(8, 34, 8),
+		CFrame = CFrame.new(0, 17, 46),
+		Color = Color3.fromHex("9B5DE5"),
+		Material = Enum.Material.Neon,
+		Transparency = 0.15,
+		Parent = hub,
+	})
+	obelisk:SetAttribute("TeleportObelisk", true)
+
+	local obeliskPrompt = Instance.new("ProximityPrompt")
+	obeliskPrompt.ActionText = "Travel"
+	obeliskPrompt.ObjectText = "TELEPORT OBELISK"
+	obeliskPrompt.HoldDuration = 0
+	obeliskPrompt.MaxActivationDistance = 16
+	obeliskPrompt.RequiresLineOfSight = false
+	obeliskPrompt:SetAttribute("OpensTeleport", true)
+	obeliskPrompt.Parent = obelisk
+
 	hub.Parent = parent
 	return hub
 end
@@ -221,6 +246,30 @@ function WorldBuilder.BuildZone(zoneId: string, parent: Instance): Model
 		Parent = gate,
 	})
 	gate.PrimaryPart = lintel
+	--[[
+		ZoneService binds the unlock prompt to this. Tagged by attribute rather
+		than by name so a hand-built zone only has to carry the attribute.
+	]]
+	lintel:SetAttribute("ZoneGate", zone.Id)
+
+	--[[
+		The locked barrier. COSMETIC ONLY - a part cannot be solid for one
+		player and passable for another, so this says "locked" from a distance
+		and ZoneService's positional check is what actually enforces it. The
+		client hides it for zones it has unlocked.
+	]]
+	local barrier = part({
+		Name = "ZoneBarrier",
+		Size = Vector3.new(gateWidth, ZoneConfig.GateHeight, 2),
+		CFrame = origin * CFrame.new(0, ZoneConfig.GateHeight * 0.5, half),
+		Color = shade(color, 0.4),
+		Material = Enum.Material.ForceField,
+		Transparency = 0.55,
+		CanCollide = false,
+		Parent = gate,
+	})
+	barrier:SetAttribute("ZoneBarrier", zone.Id)
+
 	gate.Parent = model
 
 	-- Zone name and unlock cost, readable on approach.
@@ -256,8 +305,8 @@ function WorldBuilder.BuildZone(zoneId: string, parent: Instance): Model
 	signGui.Parent = lintel
 
 	-- Zone Shrine: interact once to register the zone on the Teleport Obelisk
-	-- (docs/02 §2.2). Geometry now, behaviour in Step 14.
-	part({
+	-- and collect a one-time bonus (docs/02 §2.2). ZoneService binds the prompt.
+	local shrine = part({
 		Name = "Shrine",
 		Size = Vector3.new(12, 22, 12),
 		CFrame = origin * CFrame.new(-half + 44, 11, half - 44),
@@ -265,6 +314,7 @@ function WorldBuilder.BuildZone(zoneId: string, parent: Instance): Model
 		Material = Enum.Material.Slate,
 		Parent = model,
 	})
+	shrine:SetAttribute("ShrineZone", zone.Id)
 
 	-- Landmarks, for navigation. Deterministic placement so players learn them.
 	local landmarks = Instance.new("Folder")

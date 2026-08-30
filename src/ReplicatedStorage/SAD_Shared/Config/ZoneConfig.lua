@@ -234,6 +234,88 @@ function ZoneConfig.HeadlineRarities(zoneId: string, rarityConfig, limit: number
 	return headline
 end
 
+--[[
+	Whether a profile meets a zone's unlock gate, and what is still missing.
+
+	Returns (ok, reason, requirements) where `requirements` is a list of
+	{ Label, Met } - the shop-style breakdown the client renders so a locked
+	zone says WHICH gate is short, not just that it is locked.
+
+	Takes its configs as arguments for the same reason HeadlineRarities does:
+	this module is dependency-free by design and every config loads it. Shared
+	rather than server-only so the zone wheel greys the right entries with the
+	real reason - the server re-checks all of it before charging anything.
+
+	docs/02 §2.1. `Fossils` is the only gate that is SPENT; the rest are
+	thresholds a player must have reached and keeps afterwards.
+]]
+function ZoneConfig.UnlockCheck(zoneId: string, data, dinoConfig, rarityConfig)
+	local zone = (ZoneConfig.Zones :: any)[zoneId]
+	if not zone then
+		return false, "no such zone", {}
+	end
+	if not data then
+		return false, "profile not loaded", {}
+	end
+	if data.ZonesUnlocked and data.ZonesUnlocked[zoneId] then
+		return false, "already unlocked", {}
+	end
+
+	local gate = zone.Unlock
+	local requirements = {}
+	local firstMissing = nil
+
+	local function need(met: boolean, label: string, shortfall: string)
+		table.insert(requirements, { Label = label, Met = met })
+		if not met and not firstMissing then
+			firstMissing = shortfall
+		end
+	end
+
+	need((data.Fossils or 0) >= gate.Fossils,
+		string.format("%d Fossils", gate.Fossils), "not enough Fossils")
+
+	if gate.Rebirths > 0 then
+		need((data.Rebirths or 0) >= gate.Rebirths,
+			string.format("Rebirth %d", gate.Rebirths), "rebirth too low")
+	end
+
+	if gate.IndexPercent > 0 then
+		--[[
+			Index percentage is over every species that EXISTS, not every
+			species shipped - otherwise the gate loosens every time content is
+			added, and a player who met it once could stop meeting it.
+		]]
+		local discovered, total = 0, 0
+		for _, species in dinoConfig.Species do
+			total += 1
+			if data.Index and data.Index[species.Id] then
+				discovered += 1
+			end
+		end
+		local percent = if total > 0 then discovered / total * 100 else 0
+		need(percent >= gate.IndexPercent,
+			string.format("Index %d%%", gate.IndexPercent), "index too low")
+	end
+
+	if gate.OwnRarity then
+		local wanted = rarityConfig.Tiers[gate.OwnRarity]
+		local has = false
+		if wanted and data.Dinos then
+			for _, entry in data.Dinos do
+				local tier = rarityConfig.Tiers[entry.Rarity]
+				if tier and tier.Rank >= wanted.Rank then
+					has = true
+					break
+				end
+			end
+		end
+		need(has, string.format("own a %s", gate.OwnRarity), "missing a " .. gate.OwnRarity)
+	end
+
+	return firstMissing == nil, firstMissing, requirements
+end
+
 function ZoneConfig.GetColor(zoneId: string): Color3
 	local zone = (ZoneConfig.Zones :: any)[zoneId]
 	return Color3.fromHex(if zone then zone.Color else "FFFFFF")

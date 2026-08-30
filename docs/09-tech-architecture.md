@@ -69,7 +69,8 @@ ServerScriptService
         │   └── PlotBuilder          procedural plot geometry
         ├── NestService              world blockout, nest spawn/respawn/claim
         │   ├── WorldBuilder         procedural hub + zone geometry
-        │   └── NestBuilder          nest bowl, eggs, sign
+        │   ├── NestBuilder          nest bowl, eggs, sign
+        │   └── ZoneService          unlocking, shrines, teleports, trespass
         ├── WildAIService            guardian spawn, chase ticking, de-aggro
         ├── IncubationService        timers, hatch resolution
         ├── DinosaurService          hatch rolls, ownership, place/store/sell/fuse
@@ -110,7 +111,7 @@ StarterPlayer
             ├── ShopController       the three upgrade boards
             ├── IndexController
             ├── QuestController
-            ├── TeleportController
+            ├── TeleportController   the zone wheel and PARK teleport
             ├── MinimapController
             ├── TutorialController
             └── SettingsController

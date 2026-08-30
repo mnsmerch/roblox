@@ -60,7 +60,7 @@ section("ProfileTemplate")
 local EXPECTED = {
 	"SchemaVersion",
 	"Fossils", "DNA",
-	"Rebirths", "ZonesUnlocked", "Upgrades", "Defences", "LuckNodes",
+	"Rebirths", "ZonesUnlocked", "Shrines", "Upgrades", "Defences", "LuckNodes",
 	"Dinos", "Eggs", "Incubators",
 	"Index", "IndexMilestones",
 	"Boosts", "Items", "ShieldUntil", "ShieldBankSecs",

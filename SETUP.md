@@ -405,6 +405,26 @@ place instead of computing it themselves.
 
 ---
 
+## Step 14 — zones and teleports
+
+| Studio object | Source file |
+|---|---|
+| `Services/NestService/ZoneService` | `src/.../Services/NestService/ZoneService.lua` *(new)* |
+| `SAD_Client/Controllers/TeleportController` | `src/.../Controllers/TeleportController.lua` *(new)* |
+| `SAD_Shared/Config/ZoneConfig` | *(re-paste — `UnlockCheck`)* |
+| `SAD_Shared/Modules/Types` | *(re-paste — `Shrines`)* |
+| `Services/DataService/ProfileTemplate` | *(re-paste — `Shrines`)* |
+| `Services/PlayerDataService/Replication` | *(re-paste — `Shrines` replicated)* |
+| `Services/NestService` | *(re-paste — forwards Init/Start)* |
+| `Services/NestService/WorldBuilder` | *(re-paste — Obelisk, barriers, tags)* |
+
+`ZoneService` is a **ModuleScript beside** `WorldBuilder` and `NestBuilder`
+under `NestService`, not a service in its own right — `NestService` forwards
+`Init` and `Start` to it, so it never appears in Bootstrap's roster. That is
+what docs/13 §Step 14 specifies.
+
+---
+
 ## Step 1 test
 
 Press **Play**. The Output window should show, in order:
@@ -1490,9 +1510,97 @@ Fossils are where you left them, and the shop redraws from the loaded profile.
 
 ---
 
+## Step 14 test
+
+**1. Boot.** Play. New lines:
+
+```
+[SAD/S][ZoneService] Ready. 4 shrine(s), 1 obelisk(s), 4 zone(s)
+[SAD/C][TeleportController] Ready. 6 destination(s)
+```
+
+**2. A locked zone refuses the walk.** Walk to Rocky Canyon and step through
+its gate. Within half a second you are back outside it with a toast:
+`ROCKY CANYON IS LOCKED · 5K Fossils to open`. The shimmering barrier across
+the gate is scenery — it does not stop you, the server does.
+
+**3. Unlock it where you are standing.** The gate itself carries a prompt:
+`Unlock · ROCKY CANYON · 5K Fossils`. Grant yourself the money first:
+
+```lua
+local Econ = require(game.ServerScriptService.SAD_Server.Services.EconomyService)
+Econ.AddFossils(game.Players:GetPlayers()[1], 10000, "test")
+```
+
+Hold the prompt. A full-screen reveal fires, the barrier vanishes *for you*,
+and you can walk in. Check the barrier is still up for a second player — it is
+a per-client transparency, not a server change.
+
+**4. Unlocking is not the same as discovering.** Open the wheel (**5**, the
+**GO** button, or the Obelisk beside spawn). Rocky Canyon now says
+`Walk there once to put it on your Obelisk` and cannot be selected. Walk to the
+shrine in its far corner and hold the prompt: `+500` and the card lights up.
+That is the beat that teaches the map before the game lets you skip it.
+
+**5. Teleport.** Pick Rocky Canyon from the wheel. You arrive **outside** its
+gate, not inside — so the walk through the gate is always the same walk.
+Then tap **PARK** (or press **1**) and you are home instantly.
+
+**6. Teleporting mid-chase is refused.** The important one. Steal an egg so a
+guardian aggros, then tap PARK:
+
+```
+CANNOT TRAVEL · not while you are being chased
+```
+
+If that teleport succeeds, the chase system is bypassed and the game has no
+risk in it at all. Escape first, and the same tap works.
+
+**7. Teleports do not trip the movement detector.** docs/13 flags this for this
+step. Teleport several times in a row across the map and watch Output: there
+must be no `SuspiciousMovement` flags.
+
+```lua
+local Sec = require(game.ServerScriptService.SAD_Server.Services.SecurityService)
+print(Sec.GetFlagCount(game.Players:GetPlayers()[1]))   -- 0
+```
+
+**8. A locked zone rejects the teleport too**, not just the walk:
+
+```lua
+local Nest = require(game.ServerScriptService.SAD_Server.Services.NestService)
+local p = game.Players:GetPlayers()[1]
+print(Nest.Zones.Teleport(p, "frozen"))     -- false, zone is locked
+print(Nest.Zones.Teleport(p, "atlantis"))   -- false, no such destination
+```
+
+**9. Server-side is the only side.** From the **client** console (F9), try to
+teleport into a zone you have not bought:
+
+```lua
+local Net = require(game.ReplicatedStorage.SAD_Shared.Modules.Net)
+Net.FireServer("RequestTeleport", "frozen")
+```
+
+You do not move. The client sends a destination id and nothing else; every gate
+is re-checked on the server.
+
+### What to watch for
+
+| Symptom | Cause |
+|---|---|
+| Pushed out of your own park | A zone square overlapping the park ring — `step14_spec` asserts 70 studs of clearance |
+| Teleport lands you inside the zone | `DestinationCFrame` using local −Z; +Z faces the hub |
+| Barrier still visible after unlocking | `TeleportController` not observing `ZonesUnlocked`, or `SAD_World` not found |
+| Shrine gives the bonus twice | `Shrines[zoneId]` not checked before granting |
+| `SuspiciousMovement` after every teleport | `SecurityService.Exempt` called after `PivotTo` instead of before |
+| Wheel lists a zone you cannot use | Correct — locked and unvisited zones stay listed, showing what they need |
+
+---
+
 ## Running the offline specs
 
-Syntax-checks every source file and runs **2,686 assertions** without Studio:
+Syntax-checks every source file and runs **2,768 assertions** without Studio:
 
 ```bash
 ./tests/run.sh
@@ -1515,6 +1623,7 @@ Fetches the Luau CLI on first run.
 | `tests/step11_spec.lua` | Mutation distributions against their published weights, Prime pairing rules and ceiling, weather modifiers, species-roll coverage for every zone × rarity, the master income formula, and the incubation ladder |
 | `tests/step12_spec.lua` | Footprint occupancy under a packed grid, the banking formula against its own cap, offline earnings at every rebirth, slot caps, and the day-one income curve against docs/05 |
 | `tests/step13_spec.lua` | Every price against integrality and monotonicity, all 14 published max effects, `Stats` block-vs-helper agreement, the Upgrades/Defences split in both directions, Buy Max bounds, the retroactive-income guard, and docs/05 §5's 180-second constraint across a rebirth run |
+| `tests/step14_spec.lua` | Every unlock gate against docs/02 §2.1, all four gate kinds driven through an injected zone, teleport destinations proven to land outside their zone, zone-vs-park-ring clearance, the re-measured loop tempo, and the Day-1-reaches-Zone-4 claim |
 
 This is not a substitute for the in-Studio tests above. `Net`, `Log`, both
 Bootstraps and everything ProfileStore-dependent need Roblox to exercise.

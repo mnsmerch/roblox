@@ -49,6 +49,7 @@ local REPLICATED = {
 	DNA = true,
 	Rebirths = true,
 	ZonesUnlocked = true,
+	Shrines = true,
 	Upgrades = true,
 	Defences = true,
 	LuckNodes = true,

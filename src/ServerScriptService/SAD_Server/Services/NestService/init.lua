@@ -3,7 +3,8 @@
 	NestService
 	ServerScriptService/SAD_Server/Services/NestService  (ModuleScript)
 	  ├── WorldBuilder  (ModuleScript)
-	  └── NestBuilder   (ModuleScript)
+	  ├── NestBuilder   (ModuleScript)
+	  └── ZoneService   (ModuleScript)
 
 	Owns the world blockout, the nests in it, and the authoritative answer to
 	"is that egg still there?".
@@ -30,7 +31,8 @@
 		NestService.EggClaimed    Signal(player, nest, slotIndex)
 		NestService.NestRefilled  Signal(nest, slotIndex)
 
-	Depends on: ZoneConfig, GameConfig, Log, Signal, WorldBuilder, NestBuilder.
+	Depends on: ZoneConfig, GameConfig, Log, Signal, WorldBuilder, NestBuilder,
+	            ZoneService.
 	Depended on by: EggService (Step 8), WildAIService (Step 9).
 ]]
 
@@ -45,6 +47,7 @@ local Log = require(Shared.Modules.Log)
 local Signal = require(Shared.Modules.Signal)
 
 local WorldBuilder = require(script.WorldBuilder)
+local ZoneService = require(script.ZoneService)
 local NestBuilder = require(script.NestBuilder)
 
 local NestService = {}
@@ -288,6 +291,14 @@ function NestService.Init(app)
 	WorldBuilder.BuildAll(worldFolder)
 	Log.info("NestService", "Built hub and %d zone(s) in %.0f ms",
 		ZoneConfig.Count(), (os.clock() - startedAt) * 1000)
+
+	--[[
+		Forwarded rather than registered in Bootstrap's roster: docs/13 §Step 14
+		specifies "a small ZoneService inside NestService", and it works
+		entirely on the world built directly above. Init AFTER BuildAll, so its
+		Start finds the geometry it binds prompts to.
+	]]
+	ZoneService.Init(app)
 end
 
 function NestService.Start(app)
@@ -335,6 +346,11 @@ function NestService.Start(app)
 	end)
 
 	Log.info("NestService", "Respawn ticking at 1 Hz")
+
+	ZoneService.Start(app)
 end
+
+--- Zone unlocking, shrines and teleports. See NestService/ZoneService.
+NestService.Zones = ZoneService
 
 return NestService
